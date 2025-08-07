@@ -262,6 +262,40 @@ ripstream/
 - **Pydantic** for data validation
 - **Comprehensive docstrings** for all public APIs
 
+## 📦 Packaging & Distribution
+
+### Building Standalone Executable
+
+Ripstream can be packaged into a standalone executable for easy distribution to end users who don't have Python installed.
+
+#### Quick Build
+```bash
+# Automated build (recommended)
+python build.py
+
+# Or on Windows
+build.bat
+```
+
+#### Manual Build
+```bash
+# Using PyInstaller directly
+pyinstaller ripstream.spec --clean
+```
+
+#### Output
+- **`dist/Ripstream.exe`** (~55MB): Standalone executable
+- **`dist/README.txt`**: User instructions
+
+#### Features
+- **Single file**: Everything bundled into one executable
+- **No dependencies**: Python runtime and all packages included
+- **Application icon**: Embedded icon for Windows
+- **Optimized size**: Excludes unnecessary modules
+- **Ready to distribute**: Users can run directly
+
+For detailed packaging information, see [`PACKAGING.md`](PACKAGING.md).
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see our contributing guidelines:

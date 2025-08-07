@@ -20,6 +20,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.2.0",
+    "pyinstaller>=6.15.0",
     "pytest>=8.4.1",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.2.1",
@@ -111,6 +112,7 @@ ignore = [
 "tests/*" = ["S", "D", "ANN", "T201", "ASYNC", "ARG", "PTH", "TRY", "SLF001"]
 "*.ipynb" = ["T201"]
 "examples/*" = ["BLE001"]
+"build.py" = ["T201", "ERA001"]
 
 [tool.ruff.lint.flake8-builtins]
 builtins-ignorelist = ["input", "id", "bytes"]
