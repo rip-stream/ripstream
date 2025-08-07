@@ -1,0 +1,65 @@
+{
+    "name": "Ripstream Dev Container",
+    "image": "mcr.microsoft.com/devcontainers/python:3.12",
+    "features": {
+        "ghcr.io/devcontainers/features/git:1.3.4": {},
+        "ghcr.io/devcontainers/features/github-cli:1.0.14": {}
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "charliermarsh.ruff",
+                "RooVeterinaryInc.roo-cline",
+                "esbenp.prettier-vscode",
+                "pamaron.pytest-runner",
+                "astral-sh.ty",
+                "LittleFoxTeam.vscode-python-test-adapter",
+                "VisualStudioExptTeam.vscodeintellicode"
+            ]
+        },
+        "settings": {
+            "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
+            "python.analysis.typeCheckingMode": "basic",
+            "editor.formatOnSave": true,
+            "editor.codeActionsOnSave": {
+                "source.organizeImports.ruff": true,
+                "source.fixAll.ruff": true
+            },
+            "ruff.linting.enabled": true,
+            "ruff.linting.args": ["--fix"],
+            "python.linting.enabled": true,
+            "python.linting.ruffEnabled": true,
+            "python.linting.ruffArgs": ["--fix"],
+            "python.testing.pytestEnabled": true,
+            "python.testing.pytestArgs": ["tests", "-sx"],
+            "python.testing.autoTestDiscoverOnSaveEnabled": true,
+            "[python]": {
+                "editor.defaultFormatter": "charliermarsh.ruff",
+                "editor.formatOnSave": true,
+                "editor.codeActionsOnSave": {
+                    "source.organizeImports.ruff": true,
+                    "source.fixAll.ruff": true
+                }
+            },
+            "files.autosave": "afterDelay",
+            "files.autoSaveDelay": 1000,
+            "[json]": {
+                "editor.defaultFormatter": "esbenp.prettier-vscode",
+                "editor.formatOnSave": true
+            }
+        }
+    },
+    "mounts": [
+        "source=${localEnv:HOME}/.ssh,target=/home/${remoteUser}/.ssh,type=bind,consistency=cached,readonly"
+    ],
+    "remoteUser": "vscode",
+    "containerEnv": {
+        "GIT_USER_NAME": "${localEnv:GIT_USER_NAME}",
+        "GIT_USER_EMAIL": "${localEnv:GIT_USER_EMAIL}"
+    },
+    "waitFor": "postStartCommand",
+    "postCreateCommand": "bash ./.devcontainer/scripts/post-create.sh",
+    "postStartCommand": "bash ./.devcontainer/scripts/post-start.sh"
+}

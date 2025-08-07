@@ -1,0 +1,42 @@
+repos:
+  - repo: "https://github.com/pre-commit/pre-commit-hooks"
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        exclude: ^k8s/
+      - id: check-added-large-files
+      - id: check-merge-conflict
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.5
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    # uv version.
+    rev: 0.8.3
+    hooks:
+      - id: uv-sync
+      - id: uv-export
+      - id: pip-compile
+        name: Compile requirements-dev.txt
+        args: [pyproject.toml, -o, requirements-dev.txt, --group, dev, --generate-hashes, --universal]
+        always_run: true
+  - repo: local
+    hooks:
+      - id: pytest
+        name: Run pytest
+        entry: uv run --frozen pytest -n auto ./tests -x
+        language: python
+        types: [python]
+        pass_filenames: false
+        always_run: true
+      - id: type-check
+        name: Run type check
+        entry: uv run --frozen ty check .
+        language: python
+        types: [python]
+        pass_filenames: false
+        always_run: true
