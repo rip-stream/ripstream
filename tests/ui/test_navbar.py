@@ -41,7 +41,8 @@ class TestURLInputWidget:
         """Test the layout structure."""
         layout = url_widget.layout()
         assert isinstance(layout, QHBoxLayout)
-        assert layout.count() == 4  # URL label, input, service label, button
+        # Dropdown, URL label, input, service label, button
+        assert layout.count() == 5
 
     def test_url_input_properties(self, url_widget):
         """Test URL input field properties."""

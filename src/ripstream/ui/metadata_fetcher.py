@@ -4,6 +4,7 @@
 """Service-agnostic metadata fetcher for streaming services."""
 
 import asyncio
+import contextlib
 import hashlib
 import logging
 import threading
@@ -16,6 +17,7 @@ from PyQt6.QtGui import QPixmap
 
 from ripstream.core.url_parser import ParsedURL
 from ripstream.downloader.enums import ContentType
+from ripstream.models.enums import ArtistItemFilter
 from ripstream.ui.metadata_providers.factory import MetadataProviderFactory
 
 if TYPE_CHECKING:
@@ -45,6 +47,7 @@ class MetadataFetcher(QThread):
         parsed_url: ParsedURL,
         credentials: dict[str, Any] | None = None,
         parent=None,
+        artist_item_filter: ArtistItemFilter | None = None,
     ):
         super().__init__(parent)
         self.parsed_url = parsed_url
@@ -63,6 +66,11 @@ class MetadataFetcher(QThread):
         self._remaining_items = 0
         self._total_items = 0
         self._service_name = ""
+
+        # Artist items filtering preference
+        self.artist_item_filter: ArtistItemFilter = (
+            artist_item_filter if artist_item_filter else ArtistItemFilter.BOTH
+        )
 
     def run(self):
         """Run the metadata fetching process."""
@@ -98,6 +106,11 @@ class MetadataFetcher(QThread):
                     f"Failed to authenticate with {self.provider.service_name}"
                 )
                 return
+
+            # Apply artist filter preference to provider before fetching
+            # Not all providers must support this attribute, so set defensively
+            with contextlib.suppress(AttributeError):
+                self.provider.artist_item_filter = self.artist_item_filter
 
             self.progress_updated.emit(50, "Fetching metadata...")
 
@@ -178,6 +191,8 @@ class MetadataFetcher(QThread):
 
     def _on_album_fetched(self, album_metadata: dict[str, Any]):
         """Execute an action when an album is fetched."""
+        # No filtering here; streaming filter is applied provider-side to avoid double work
+
         # Emit the album_fetched signal to update UI progressively
         self.album_fetched.emit(album_metadata)
 

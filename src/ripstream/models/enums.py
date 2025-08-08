@@ -68,3 +68,11 @@ class CoverSize(StrEnum):
     MEDIUM = "medium"
     LARGE = "large"
     ORIGINAL = "original"
+
+
+class ArtistItemFilter(StrEnum):
+    """Filter for artist discography items shown in the UI/fetcher."""
+
+    ALBUMS_ONLY = "albums_only"
+    SINGLES_ONLY = "singles_only"
+    BOTH = "both"

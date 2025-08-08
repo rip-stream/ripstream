@@ -6,6 +6,7 @@
 import qtawesome as qta
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -15,7 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ripstream.core.url_parser import detect_service_from_url
-from ripstream.models.enums import StreamingSource
+from ripstream.models.enums import ArtistItemFilter, StreamingSource
 
 
 class URLInputWidget(QWidget):
@@ -31,6 +32,13 @@ class URLInputWidget(QWidget):
         """Set up the URL input UI."""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        # Artist item filter dropdown
+        self.filter_dropdown = QComboBox()
+        self.filter_dropdown.addItems(["Both", "Albums Only", "Singles Only"])
+        self.filter_dropdown.setToolTip(
+            "Choose whether to fetch albums, singles, or both for artist URLs"
+        )
 
         # URL input field
         self.url_input = QLineEdit()
@@ -49,6 +57,7 @@ class URLInputWidget(QWidget):
         self.service_label = QLabel("Service: Unknown")
         self.service_label.setStyleSheet("color: #666; font-size: 11px;")
 
+        layout.addWidget(self.filter_dropdown)
         layout.addWidget(QLabel("URL:"))
         layout.addWidget(self.url_input, 1)  # Stretch factor 1
         layout.addWidget(self.service_label)
@@ -56,6 +65,15 @@ class URLInputWidget(QWidget):
 
         # Connect text change to service detection
         self.url_input.textChanged.connect(self.detect_service)
+
+    def get_artist_filter(self) -> ArtistItemFilter:
+        """Return the selected artist item filter as an enum."""
+        text = (self.filter_dropdown.currentText() or "").lower()
+        if "albums" in text and "only" in text:
+            return ArtistItemFilter.ALBUMS_ONLY
+        if "singles" in text and "only" in text:
+            return ArtistItemFilter.SINGLES_ONLY
+        return ArtistItemFilter.BOTH
 
     def detect_service(self, url: str) -> str | None:
         """Detect streaming service from URL."""

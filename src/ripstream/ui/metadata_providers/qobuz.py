@@ -10,7 +10,7 @@ from ripstream.downloader.config import DownloaderConfig
 from ripstream.downloader.progress import ProgressTracker
 from ripstream.downloader.qobuz.downloader import QobuzDownloader
 from ripstream.downloader.session import SessionManager
-from ripstream.models.enums import CoverSize, StreamingSource
+from ripstream.models.enums import ArtistItemFilter, CoverSize, StreamingSource
 from ripstream.ui.metadata_providers.base import BaseMetadataProvider, MetadataResult
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,8 @@ class QobuzMetadataProvider(BaseMetadataProvider):
         self.session_manager = SessionManager(self.download_config)
         self.progress_tracker = ProgressTracker()
         self.qobuz_downloader: QobuzDownloader | None = None
+        # Cache for albums prefetched during streaming filtering to avoid refetch
+        self._prefetched_albums: dict[str, Any] = {}
 
     @property
     def service_name(self) -> str:
@@ -94,8 +96,19 @@ class QobuzMetadataProvider(BaseMetadataProvider):
                 )
                 continue
 
-        # Combine albums and singles into items list
-        items = albums + singles
+        # Apply filtering based on preference
+        if self.artist_item_filter == ArtistItemFilter.ALBUMS_ONLY:
+            items = albums
+            total_albums = len(albums)
+            total_singles = 0
+        elif self.artist_item_filter == ArtistItemFilter.SINGLES_ONLY:
+            items = singles
+            total_albums = 0
+            total_singles = len(singles)
+        else:
+            items = albums + singles
+            total_albums = len(albums)
+            total_singles = len(singles)
 
         return MetadataResult(
             content_type="artist",
@@ -107,8 +120,8 @@ class QobuzMetadataProvider(BaseMetadataProvider):
                     "id": artist_id,
                     "name": artist.name,
                     "biography": artist.info.biography,
-                    "total_albums": len(albums),
-                    "total_singles": len(singles),
+                    "total_albums": total_albums,
+                    "total_singles": total_singles,
                     "total_items": len(items),
                     "artwork_thumbnail": thumbnail.url if thumbnail else None,
                 },
@@ -136,7 +149,14 @@ class QobuzMetadataProvider(BaseMetadataProvider):
         # Get artist thumbnail
         thumbnail = artist.covers.get_best_image([CoverSize.SMALL, CoverSize.MEDIUM])
 
-        # Return initial artist info immediately
+        # Pre-filter album IDs using lightweight album info fetch with caching
+        filtered_album_ids = (
+            await self._prefilter_album_ids(artist.album_ids)
+            if album_callback
+            else artist.album_ids
+        )
+
+        # Return initial artist info immediately reflecting filtered list
         initial_result = MetadataResult(
             content_type="artist",
             service=self.service_name,
@@ -149,12 +169,12 @@ class QobuzMetadataProvider(BaseMetadataProvider):
                     "biography": artist.info.biography,
                     "total_albums": 0,  # Will be updated as albums are fetched
                     "total_singles": 0,  # Will be updated as albums are fetched
-                    "total_items": len(artist.album_ids),
-                    "remaining_items": len(artist.album_ids),  # For countdown display
+                    "total_items": len(filtered_album_ids),
+                    "remaining_items": len(filtered_album_ids),  # For countdown display
                     "artwork_thumbnail": thumbnail.url if thumbnail else None,
                 },
                 "items": [],  # Empty initially, albums will be streamed via callback
-                "album_ids": artist.album_ids,
+                "album_ids": filtered_album_ids,
             },
             raw_models={
                 "artist": artist,
@@ -163,14 +183,14 @@ class QobuzMetadataProvider(BaseMetadataProvider):
             },
         )
 
-        # If callback provided, fetch albums asynchronously and stream results
+        # If callback provided, pre-filter and stream results
         if album_callback:
-            # Initialize counter if callback provided
+            # Initialize counter with filtered count if callback provided
             if counter_init_callback:
-                counter_init_callback(len(artist.album_ids), self.service_name)
+                counter_init_callback(len(filtered_album_ids), self.service_name)
 
             # Fetch albums in the same async context to ensure proper cleanup
-            await self._fetch_albums_async(artist.album_ids, album_callback)
+            await self._fetch_albums_async(filtered_album_ids, album_callback)
 
         return initial_result
 
@@ -178,6 +198,8 @@ class QobuzMetadataProvider(BaseMetadataProvider):
         """Fetch albums asynchronously and call callback for each one."""
         for album_id in album_ids:
             try:
+                # Build album metadata; this call will reuse and pop any prefetched
+                # album model from the cache inside fetch_album_metadata
                 album_metadata = await self.fetch_album_metadata(album_id)
                 album_item = album_metadata.data
 
@@ -191,14 +213,50 @@ class QobuzMetadataProvider(BaseMetadataProvider):
                 )
                 continue
 
+    async def _prefilter_album_ids(self, album_ids: list[str]) -> list[str]:
+        """Filter album IDs before streaming based on artist_item_filter.
+
+        Caches lightweight album models to avoid re-fetching later.
+        """
+        # No filtering required
+        if (
+            self.artist_item_filter == ArtistItemFilter.BOTH
+            or not self.qobuz_downloader
+        ):
+            return album_ids
+
+        filtered: list[str] = []
+        for album_id in album_ids:
+            try:
+                album = await self.qobuz_downloader.get_album_metadata(album_id)
+                # Cache prefetched album model for potential reuse
+                self._prefetched_albums[album_id] = album
+                total_tracks = album.info.total_tracks or 0
+                is_single = total_tracks <= 3
+                if (
+                    self.artist_item_filter == ArtistItemFilter.ALBUMS_ONLY
+                    and not is_single
+                ) or (
+                    self.artist_item_filter == ArtistItemFilter.SINGLES_ONLY
+                    and is_single
+                ):
+                    filtered.append(album_id)
+            except Exception:
+                logger.exception("Failed to pre-filter album %s", album_id)
+                continue
+        return filtered
+
     async def fetch_album_metadata(self, album_id: str) -> MetadataResult:
         """Fetch album metadata including all tracks."""
         if not self._authenticated or not self.qobuz_downloader:
             msg = "Not authenticated with Qobuz"
             raise RuntimeError(msg)
 
-        # Get album metadata
-        album = await self.qobuz_downloader.get_album_metadata(album_id)
+        # Get album metadata, reusing any cached prefetch from streaming filter
+        if album_id in self._prefetched_albums:
+            album = self._prefetched_albums.pop(album_id)
+        else:
+            album = await self.qobuz_downloader.get_album_metadata(album_id)
 
         # Get all tracks in the album
         tracks = []

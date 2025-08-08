@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from ripstream.models.album import Album
 from ripstream.models.artist import Artist
-from ripstream.models.enums import StreamingSource
+from ripstream.models.enums import ArtistItemFilter, StreamingSource
 from ripstream.models.playlist import Playlist
 from ripstream.models.track import Track
 
@@ -38,6 +38,8 @@ class BaseMetadataProvider(ABC):
         """Initialize the metadata provider with optional credentials."""
         self.credentials = credentials or {}
         self._authenticated = False
+        # Preference for which artist items to include when fetching artist content
+        self.artist_item_filter: ArtistItemFilter = ArtistItemFilter.BOTH
 
     @property
     @abstractmethod

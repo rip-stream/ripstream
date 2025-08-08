@@ -10,7 +10,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QPixmap
 
 from ripstream.core.url_parser import ParsedURL
-from ripstream.models.enums import StreamingSource
+from ripstream.models.enums import ArtistItemFilter, StreamingSource
 from ripstream.ui.metadata_fetcher import MetadataFetcher
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,9 @@ class MetadataService(QObject):
         """Update the configuration used by this service."""
         self.config = new_config
 
-    def fetch_metadata(self, parsed_url: ParsedURL):
+    def fetch_metadata(
+        self, parsed_url: ParsedURL, artist_item_filter: ArtistItemFilter | None = None
+    ):
         """Start fetching metadata for a parsed URL."""
         # Stop any existing fetcher
         if self.current_fetcher and self.current_fetcher.isRunning():
@@ -48,7 +50,9 @@ class MetadataService(QObject):
         credentials = self._get_credentials_for_service(parsed_url.service)
 
         # Create new fetcher with credentials
-        self.current_fetcher = MetadataFetcher(parsed_url, credentials)
+        self.current_fetcher = MetadataFetcher(
+            parsed_url, credentials, artist_item_filter=artist_item_filter
+        )
         self.current_fetcher.metadata_fetched.connect(self.metadata_ready.emit)
         self.current_fetcher.album_fetched.connect(self.album_ready.emit)
         self.current_fetcher.artwork_fetched.connect(self.artwork_ready.emit)

@@ -258,8 +258,15 @@ class MainWindow(QMainWindow):
             if discography_view:
                 discography_view.clear_all()
 
-            # Start fetching metadata
-            self.metadata_service.fetch_metadata(parsed_result)
+            # Start fetching metadata with artist filter preference from navbar
+            navbar = self.ui_manager.get_navbar()
+            artist_filter = None
+            if navbar and hasattr(navbar, "url_widget"):
+                artist_filter = navbar.url_widget.get_artist_filter()
+
+            self.metadata_service.fetch_metadata(
+                parsed_result, artist_item_filter=artist_filter
+            )
 
         except (ValueError, AttributeError, RuntimeError) as e:
             self.ui_manager.update_status(f"Error processing URL: {e!s}")
