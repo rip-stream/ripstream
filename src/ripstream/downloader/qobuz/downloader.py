@@ -636,6 +636,37 @@ class QobuzDownloader(BaseDownloader):
 
         all_results = []
 
+        # Prefetch artwork first so tracks can embed without racing
+        if download_artwork and hasattr(album, "covers"):
+            try:
+                from ripstream.metadata.artwork import (
+                    build_artwork_config,
+                )
+                from ripstream.metadata.artwork import (
+                    download_artwork as prefetch_download_artwork,
+                )
+
+                # Build artwork config from source settings
+                source_settings = self.config.source_settings.get("default", {})
+                artwork_config = build_artwork_config(source_settings)
+
+                # Session for artwork
+                session = await self.session_manager.get_session("qobuz")
+
+                # Extract URLs and download to album folder
+                album_info_for_art = await self.client.get_album_info(album_id)
+                artwork_urls = self._extract_artwork_urls(album_info_for_art)
+                # Only prefetch if we have URLs
+                if artwork_urls:
+                    await prefetch_download_artwork(
+                        session,
+                        str(album_path),
+                        artwork_urls,
+                        artwork_config,
+                    )
+            except Exception:
+                logger.exception("Failed to prefetch artwork for album %s", album_id)
+
         # Download tracks
         track_results = await self.download_multiple(
             [
@@ -645,16 +676,6 @@ class QobuzDownloader(BaseDownloader):
             str(album_path),
         )
         all_results.extend(track_results)
-
-        # Download artwork if requested and available
-        if download_artwork and hasattr(album, "covers"):
-            try:
-                artwork_results = await self.download_artwork(
-                    album_id, str(album_path), album.covers
-                )
-                all_results.extend(artwork_results)
-            except Exception:
-                logger.exception("Failed to download artwork for album %s", album_id)
 
         # Download booklets if requested and available
         if download_booklets:

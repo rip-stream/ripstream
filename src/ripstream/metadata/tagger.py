@@ -109,7 +109,7 @@ class Container(Enum):
     AAC = 2
     MP3 = 3
 
-    def get_mutagen_class(self, path: str):
+    def get_mutagen_class(self, path: str) -> Any:
         """Get the appropriate mutagen class for this container."""
         if self == Container.FLAC:
             return FLAC(path)
@@ -188,12 +188,12 @@ class Container(Enum):
                 out.append((v, text))
         return out
 
-    def tag_audio(self, audio, tags: list[tuple]):
+    def tag_audio(self, audio: Any, tags: list[tuple]) -> None:
         """Apply tags to the audio file object."""
         for k, v in tags:
             audio[k] = v
 
-    async def embed_cover(self, audio, cover_path: str):
+    async def embed_cover(self, audio: Any, cover_path: str) -> None:
         """Embed cover art into the audio file."""
         if not Path(cover_path).exists():
             logger.warning("Cover art file not found: %s", cover_path)
@@ -210,9 +210,9 @@ class Container(Enum):
             return
 
         if self == Container.FLAC:
-            size = Path(cover_path).stat().st_size
-            if size > FLAC_MAX_BLOCKSIZE:
-                logger.error("Cover art too big for FLAC: %d bytes", size)
+            # Enforce FLAC blocksize limit using previously computed file_size
+            if file_size > FLAC_MAX_BLOCKSIZE:
+                logger.error("Cover art too big for FLAC: %d bytes", file_size)
                 return
 
             cover = Picture()
@@ -235,7 +235,7 @@ class Container(Enum):
                 cover = MP4Cover(await img.read(), imageformat=MP4Cover.FORMAT_JPEG)
             audio["covr"] = [cover]
 
-    def save_audio(self, audio, path: str):
+    def save_audio(self, audio: Any, path: str) -> None:
         """Save the audio file with embedded tags and artwork."""
         if self == Container.FLAC or self == Container.AAC:
             audio.save()
@@ -245,7 +245,7 @@ class Container(Enum):
 
 async def tag_file(
     file_path: str, metadata: dict[str, Any], cover_path: str | None = None
-):
+) -> None:
     """Tag an audio file with metadata and optionally embed cover art.
 
     Args:

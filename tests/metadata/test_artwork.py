@@ -20,10 +20,10 @@ class TestArtworkDownload:
     """Test artwork downloading functionality."""
 
     @pytest.mark.asyncio
-    async def test_download_artwork_disabled(self):
+    async def test_download_artwork_disabled(self, tmp_path):
         """Test when both save and embed artwork are disabled."""
         mock_session = MagicMock()
-        folder = "/test/folder"
+        folder = str(tmp_path)
         artwork_urls = {"large": "http://example.com/large.jpg"}
         config = {"save_artwork": False, "embed_artwork": False}
 
@@ -35,10 +35,10 @@ class TestArtworkDownload:
         assert saved_path is None
 
     @pytest.mark.asyncio
-    async def test_download_artwork_no_urls(self):
+    async def test_download_artwork_no_urls(self, tmp_path):
         """Test when no artwork URLs are provided."""
         mock_session = MagicMock()
-        folder = "/test/folder"
+        folder = str(tmp_path)
         artwork_urls = {}
         config = {"save_artwork": True, "embed_artwork": True}
 
@@ -96,10 +96,10 @@ class TestArtworkDownload:
 
     @pytest.mark.asyncio
     @patch("ripstream.metadata.artwork._download_image")
-    async def test_download_artwork_failure(self, mock_download):
+    async def test_download_artwork_failure(self, mock_download, tmp_path):
         """Test artwork download failure."""
         mock_session = MagicMock()
-        folder = "/test/folder"
+        folder = str(tmp_path)
         artwork_urls = {"large": "http://example.com/large.jpg"}
         config = {"save_artwork": True, "embed_artwork": False}
 
@@ -112,6 +112,63 @@ class TestArtworkDownload:
 
         assert embed_path is None
         assert saved_path is None
+
+    @pytest.mark.asyncio
+    async def test_concurrent_downloads_same_target_do_not_conflict(
+        self, monkeypatch, tmp_path
+    ):
+        """Ensure concurrent downloads to the same file path don't raise and produce a single output."""
+        import asyncio
+
+        from ripstream.metadata.artwork import _download_image
+
+        # Use a real _download_image but mock HTTP session and content
+        class FakeStream:
+            def __init__(self, chunks: list[bytes]):
+                self._chunks = chunks
+
+            async def iter_chunked(self, _size: int):
+                for c in self._chunks:
+                    await asyncio.sleep(0)  # yield control
+                    yield c
+
+        class FakeResponse:
+            def __init__(self, chunks: list[bytes]):
+                self.content = FakeStream(chunks)
+                self.headers = {}
+
+            def raise_for_status(self):
+                return None
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        class FakeSession:
+            def __init__(self, chunks: list[bytes]):
+                self._chunks = chunks
+
+            def get(self, url: str, timeout=None):
+                return FakeResponse(self._chunks)
+
+        folder = tmp_path / "album"
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / "cover.jpg"
+
+        chunks = [b"a" * 10, b"b" * 10]
+        session = FakeSession(chunks)
+
+        # Run two concurrent downloads to the same destination
+        await asyncio.gather(
+            _download_image(session, "http://example/1.jpg", str(target)),
+            _download_image(session, "http://example/1.jpg", str(target)),
+        )
+
+        # Assert file exists and contains expected length
+        assert target.exists()
+        assert target.stat().st_size in (20,)  # one winner writes full content
 
 
 class TestImageProcessing:
@@ -196,30 +253,27 @@ class TestArtworkUtils:
         assert urls["small"] == "http://example.com/small.jpg"
         assert "original" not in urls  # None values should be filtered
 
-    @patch("ripstream.metadata.artwork.shutil.rmtree")
-    @patch("ripstream.metadata.artwork.Path")
-    def test_remove_artwork_tempdirs(self, mock_path, mock_rmtree):
-        """Test cleanup of temporary artwork directories."""
-        # Add some fake temp dirs
+    def test_remove_artwork_tempdirs(self, tmp_path):
+        """Test cleanup of temporary artwork directories without active locks."""
         from ripstream.metadata.artwork import _artwork_tempdirs
 
-        # Clear any existing entries first
+        # Prepare real directories
+        d1 = tmp_path / "artwork1"
+        d2 = tmp_path / "artwork2"
+        d1.mkdir(parents=True, exist_ok=True)
+        d2.mkdir(parents=True, exist_ok=True)
+
+        # Ensure directories are tracked
         _artwork_tempdirs.clear()
+        _artwork_tempdirs.add(str(d1))
+        _artwork_tempdirs.add(str(d2))
 
-        _artwork_tempdirs.add("/tmp/artwork1")
-        _artwork_tempdirs.add("/tmp/artwork2")
-
-        # Mock Path.exists() to return True so directories are considered existing
-        mock_path_instance = MagicMock()
-        mock_path_instance.exists.return_value = True
-        mock_path.return_value = mock_path_instance
-
+        # Execute cleanup
         remove_artwork_tempdirs()
 
-        # Should call rmtree for each directory that exists
-        assert mock_rmtree.call_count == 2
-
-        # Should clear the set
+        # Directories should be removed and set cleared
+        assert not d1.exists()
+        assert not d2.exists()
         assert len(_artwork_tempdirs) == 0
 
     @patch("ripstream.metadata.artwork.shutil.rmtree")
@@ -241,3 +295,116 @@ class TestArtworkUtils:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+class TestArtworkSemaphores:
+    """Tests for artwork semaphore scoping per event loop and folder."""
+
+    def test_get_artwork_semaphore_same_loop_same_folder_is_same(self, tmp_path):
+        import asyncio
+        import shutil
+
+        from ripstream.metadata.artwork import (
+            cleanup_artwork_semaphores,
+            get_artwork_semaphore,
+        )
+
+        folder = tmp_path / "album"
+        folder.mkdir(parents=True, exist_ok=True)
+
+        loop = asyncio.new_event_loop()
+        try:
+            s1 = loop.run_until_complete(get_artwork_semaphore(str(folder)))
+            s2 = loop.run_until_complete(get_artwork_semaphore(str(folder)))
+            assert s1 is s2
+        finally:
+            loop.close()
+
+        # Cleanup: remove folder and purge semaphores for non-existent folders
+        shutil.rmtree(folder, ignore_errors=True)
+        cleanup_artwork_semaphores()
+
+    def test_get_artwork_semaphore_same_loop_different_folders_are_different(
+        self, tmp_path
+    ):
+        import asyncio
+        import shutil
+
+        from ripstream.metadata.artwork import (
+            cleanup_artwork_semaphores,
+            get_artwork_semaphore,
+        )
+
+        folder_a = tmp_path / "albumA"
+        folder_b = tmp_path / "albumB"
+        folder_a.mkdir(parents=True, exist_ok=True)
+        folder_b.mkdir(parents=True, exist_ok=True)
+
+        loop = asyncio.new_event_loop()
+        try:
+            s1 = loop.run_until_complete(get_artwork_semaphore(str(folder_a)))
+            s2 = loop.run_until_complete(get_artwork_semaphore(str(folder_b)))
+            assert s1 is not s2
+        finally:
+            loop.close()
+
+        shutil.rmtree(folder_a, ignore_errors=True)
+        shutil.rmtree(folder_b, ignore_errors=True)
+        cleanup_artwork_semaphores()
+
+    def test_get_artwork_semaphore_different_loops_same_folder_are_different(
+        self, tmp_path
+    ):
+        import asyncio
+        import shutil
+
+        from ripstream.metadata.artwork import (
+            cleanup_artwork_semaphores,
+            get_artwork_semaphore,
+        )
+
+        folder = tmp_path / "album"
+        folder.mkdir(parents=True, exist_ok=True)
+
+        loop1 = asyncio.new_event_loop()
+        loop2 = asyncio.new_event_loop()
+        try:
+            s1 = loop1.run_until_complete(get_artwork_semaphore(str(folder)))
+            s2 = loop2.run_until_complete(get_artwork_semaphore(str(folder)))
+            assert s1 is not s2
+        finally:
+            loop1.close()
+            loop2.close()
+
+        shutil.rmtree(folder, ignore_errors=True)
+        cleanup_artwork_semaphores()
+
+    def test_cleanup_artwork_semaphores_removes_nonexistent_folders(self, tmp_path):
+        import asyncio
+        import shutil
+
+        from ripstream.metadata.artwork import (
+            _artwork_download_semaphores,
+            cleanup_artwork_semaphores,
+            get_artwork_semaphore,
+        )
+
+        folder = tmp_path / "album"
+        folder.mkdir(parents=True, exist_ok=True)
+
+        loop = asyncio.new_event_loop()
+        try:
+            # Create a semaphore entry
+            _ = loop.run_until_complete(get_artwork_semaphore(str(folder)))
+        finally:
+            loop.close()
+
+        # Ensure an entry exists for this folder
+        assert any(str(folder) == key[1] for key in _artwork_download_semaphores)
+
+        # Remove folder and cleanup
+        shutil.rmtree(folder, ignore_errors=True)
+        cleanup_artwork_semaphores()
+
+        # Ensure entries for the removed folder are gone
+        assert not any(str(folder) == key[1] for key in _artwork_download_semaphores)

@@ -693,7 +693,8 @@ class TestQobuzDownloaderDownloadOperations:
                 "album123", download_artwork=True, download_booklets=True
             )
 
-            assert len(results) == 5  # 3 tracks + 1 artwork + 1 booklet
+            # Prefetch artwork no longer returns a DownloadResult entry
+            assert len(results) == 4  # 3 tracks + 1 booklet
             assert all(r.success for r in results)
 
     @pytest.mark.asyncio

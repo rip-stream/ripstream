@@ -10,6 +10,7 @@ import logging
 import shutil
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import aiofiles
 import aiohttp
@@ -22,76 +23,106 @@ _artwork_tempdirs: set[str] = set()
 # Set to track directories that failed cleanup (for retry)
 _failed_cleanup_dirs: set[str] = set()
 # Global semaphores to prevent concurrent artwork downloads per album/folder
-_artwork_download_semaphores: dict[str, asyncio.Semaphore] = {}
-_semaphore_lock: asyncio.Lock | None = None
+# Keyed by (event_loop_id, folder_path) to avoid reusing semaphores across loops
+_artwork_download_semaphores: dict[tuple[int, str], asyncio.Semaphore] = {}
 
 
-def _get_semaphore_lock() -> asyncio.Lock:
-    """Get or create the semaphore lock for the current event loop."""
-    global _semaphore_lock
+class AsyncFileLock:
+    """A simple async file lock using mkdir as an atomic operation.
 
-    try:
-        current_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        current_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(current_loop)
+    This coordinates across event loops and processes by creating a lock directory.
+    """
 
-    # Check if we have a lock and if it's bound to the current loop
-    if _semaphore_lock is not None:
-        try:
-            # Check if lock is valid by attempting to acquire it without blocking
-            # This is safer than accessing private _get_loop method
-            if _semaphore_lock.locked():
-                pass  # Lock exists and is accessible
-            return _semaphore_lock
-        except RuntimeError:
-            # Lock is bound to a different loop, create a new one
-            logger.debug("Creating new semaphore lock for current event loop")
-        else:
-            return _semaphore_lock
-        _semaphore_lock = None
+    def __init__(self, lock_dir: Path, max_wait_seconds: float = 15.0) -> None:
+        self.lock_dir = lock_dir
+        self.max_wait_seconds = max_wait_seconds
+        self._acquired = False
 
-    if _semaphore_lock is None:
-        _semaphore_lock = asyncio.Lock()
+    async def __aenter__(self):
+        """Enter the async context, waiting until the lock can be acquired or timing out."""
+        start = asyncio.get_event_loop().time()
+        while True:
+            try:
+                # Ensure parent directory exists
+                self.lock_dir.parent.mkdir(parents=True, exist_ok=True)
+                self.lock_dir.mkdir(parents=False, exist_ok=False)
+                self._acquired = True
+                break
+            except FileExistsError:
+                # Someone else holds the lock; check for timeout or wait a bit
+                if (asyncio.get_event_loop().time() - start) > self.max_wait_seconds:
+                    logger.debug("Timed out waiting for file lock: %s", self.lock_dir)
+                    break
+                await asyncio.sleep(0.1)
+        return self
 
-    return _semaphore_lock
+    async def __aexit__(self, exc_type, exc, tb):
+        """Exit the async context and release the lock if it was acquired."""
+        if self._acquired:
+            with contextlib.suppress(OSError):
+                self.lock_dir.rmdir()
+        return False
 
 
-def remove_artwork_tempdirs():
+def _normalize_folder_path(folder_path: str) -> str:
+    """Normalize folder path for consistent semaphore keys."""
+    return str(Path(folder_path))
+
+
+def remove_artwork_tempdirs() -> None:
     """Clean up temporary artwork directories."""
     # Create a copy of the set to avoid concurrent modification during iteration
     tempdirs_to_remove = _artwork_tempdirs.copy()
     logger.debug("Removing artwork temp dirs: %s", tempdirs_to_remove)
 
     for path in tempdirs_to_remove:
-        try:
-            # Check if directory exists and is not in use
-            if Path(path).exists():
-                # Try to remove with better error handling
-                shutil.rmtree(path, ignore_errors=False)
-                logger.debug("Successfully removed temp dir: %s", path)
-        except PermissionError:
-            logger.warning("Permission denied removing temp dir: %s", path)
-        except OSError as e:
-            if e.errno == 32:  # File is being used by another process
-                logger.warning("Temp dir in use, will retry later: %s", path)
-            else:
-                logger.warning("Failed to remove temp dir %s: %s", path, e)
-        except FileNotFoundError as e:
-            logger.warning("Unexpected error removing temp dir %s: %s", path, e)
+        _attempt_remove_tempdir(path)
 
     # Move failed directories to retry set and clear main set
-    _failed_cleanup_dirs.update(
-        tempdirs_to_remove
-        - {path for path in tempdirs_to_remove if not Path(path).exists()}
-    )
+    try:
+        _failed_cleanup_dirs.update(
+            tempdirs_to_remove
+            - {path for path in tempdirs_to_remove if not Path(path).exists()}
+        )
+    except RuntimeError:
+        # Handle rare case of concurrent modification during comprehension
+        remaining = set()
+        for p in tempdirs_to_remove:
+            if Path(p).exists():
+                remaining.add(p)
+        _failed_cleanup_dirs.update(remaining)
     _artwork_tempdirs.clear()
 
     # Clean up unused semaphores
     cleanup_artwork_semaphores()
 
 
-def cleanup_failed_artwork_dirs():
+def _attempt_remove_tempdir(path: str) -> None:
+    """Attempt to remove a temp dir, tracking failures and locks separately."""
+    try:
+        temp_path = Path(path)
+        if not temp_path.exists():
+            return
+        # Skip removal if a lock indicates ongoing work in the parent folder
+        lock_dir = temp_path.parent / "__artwork.lock"
+        if lock_dir.exists():
+            logger.debug("Skipping temp dir removal due to active lock: %s", path)
+            _failed_cleanup_dirs.add(path)
+            return
+        shutil.rmtree(path, ignore_errors=False)
+        logger.debug("Successfully removed temp dir: %s", path)
+    except PermissionError:
+        logger.warning("Permission denied removing temp dir: %s", path)
+    except OSError as e:
+        if getattr(e, "errno", None) == 32:
+            logger.warning("Temp dir in use, will retry later: %s", path)
+        else:
+            logger.warning("Failed to remove temp dir %s: %s", path, e)
+    except FileNotFoundError as e:
+        logger.warning("Unexpected error removing temp dir %s: %s", path, e)
+
+
+def cleanup_failed_artwork_dirs() -> None:
     """Retry cleanup of previously failed artwork directories."""
     if not _failed_cleanup_dirs:
         return
@@ -111,65 +142,51 @@ def cleanup_failed_artwork_dirs():
             logger.debug("Cleanup retry still failed for %s: %s", path, e)
 
 
-def add_artwork_tempdir(path: str):
+def add_artwork_tempdir(path: str) -> None:
     """Safely add a temporary artwork directory to the cleanup set."""
     _artwork_tempdirs.add(path)
 
 
-def remove_artwork_tempdir(path: str):
+def remove_artwork_tempdir(path: str) -> None:
     """Safely remove a temporary artwork directory from the cleanup set."""
     _artwork_tempdirs.discard(path)
     _failed_cleanup_dirs.discard(path)
 
 
 async def get_artwork_semaphore(folder_path: str) -> asyncio.Semaphore:
-    """Get or create a semaphore for artwork downloads in a specific folder."""
-    try:
-        # Get the current event loop
-        current_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # No running loop, create one
-        current_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(current_loop)
+    """Get or create a semaphore for artwork downloads in a specific folder.
 
-    # Get the lock for the current event loop
-    semaphore_lock = _get_semaphore_lock()
-    async with semaphore_lock:
-        # Check if we have a semaphore for this folder
-        if folder_path in _artwork_download_semaphores:
-            existing_semaphore = _artwork_download_semaphores[folder_path]
-            try:
-                # Test if the semaphore is bound to the current loop
-                # by checking if we can acquire it (safer than accessing private methods)
-                if existing_semaphore.locked():
-                    pass  # Semaphore exists and is accessible
-            except RuntimeError:
-                # Semaphore is bound to a different loop, remove it
-                logger.debug(
-                    "Removing semaphore bound to different event loop for folder: %s",
-                    folder_path,
-                )
-                del _artwork_download_semaphores[folder_path]
-            else:
-                # If we get here, the semaphore is valid for the current loop
-                return existing_semaphore
+    Semaphores are scoped to the current event loop to avoid cross-loop reuse.
+    """
+    # Yield control to satisfy async usage and scheduling
+    await asyncio.sleep(0)
+    loop = asyncio.get_running_loop()
+    normalized_folder = _normalize_folder_path(folder_path)
+    key = (id(loop), normalized_folder)
 
-        # Create a new semaphore for the current event loop
-        _artwork_download_semaphores[folder_path] = asyncio.Semaphore(1)
-        return _artwork_download_semaphores[folder_path]
+    semaphore = _artwork_download_semaphores.get(key)
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(1)
+        _artwork_download_semaphores[key] = semaphore
+
+    return semaphore
 
 
-def cleanup_artwork_semaphores():
+def cleanup_artwork_semaphores() -> None:
     """Clean up unused artwork download semaphores."""
     # Remove semaphores for folders that no longer exist
-    folders_to_remove = [
-        folder_path
-        for folder_path in _artwork_download_semaphores
-        if not Path(folder_path).exists()
-    ]
+    keys_to_remove: list[tuple[int, str]] = []
+    for key in list(_artwork_download_semaphores.keys()):
+        _, folder_path = key
+        # Skip removal if a lock indicates ongoing work in the folder
+        lock_dir = Path(folder_path) / "__artwork.lock"
+        if lock_dir.exists():
+            continue
+        if not Path(folder_path).exists():
+            keys_to_remove.append(key)
 
-    for folder_path in folders_to_remove:
-        _artwork_download_semaphores.pop(folder_path, None)
+    for key in keys_to_remove:
+        _artwork_download_semaphores.pop(key, None)
 
 
 def _prepare_saved_artwork(
@@ -334,54 +351,61 @@ async def download_artwork(
     if not (save_artwork or embed_artwork) or not artwork_urls:
         return None, None
 
-    # Use semaphore to prevent concurrent downloads to the same folder
-    semaphore = await get_artwork_semaphore(folder)
-
-    async with semaphore:
-        # Check if artwork already exists before downloading
-        embed_cover_path, saved_cover_path, save_artwork, embed_artwork = (
-            _check_existing_artwork(
-                folder, config, artwork_urls, save_artwork, embed_artwork
-            )
-        )
-
-        # If both files exist, return early
-        if not save_artwork and not embed_artwork:
-            return embed_cover_path, saved_cover_path
-
-        # Prepare downloadables
-        downloadables, embed_cover_path, saved_cover_path = _prepare_downloadables(
-            session, folder, artwork_urls, config, save_artwork, embed_artwork
-        )
-
-        if not downloadables:
-            return embed_cover_path, saved_cover_path
-
-        try:
-            await asyncio.gather(*downloadables)
-            # Verify files were actually downloaded
-            embed_cover_path, saved_cover_path = _verify_downloaded_files(
-                embed_cover_path, saved_cover_path
+    # Cross-loop/process lock to prevent duplicate downloads to the same folder
+    lock_path = Path(folder) / "__artwork.lock"
+    async with AsyncFileLock(lock_path):
+        # Use semaphore to prevent concurrent downloads in the same loop
+        semaphore = await get_artwork_semaphore(folder)
+        async with semaphore:
+            # Check if artwork already exists before downloading
+            embed_cover_path, saved_cover_path, save_artwork, embed_artwork = (
+                _check_existing_artwork(
+                    folder, config, artwork_urls, save_artwork, embed_artwork
+                )
             )
 
-        except Exception:
-            logger.exception("Error downloading artwork")
-            # Clean up any partial files
-            for path in [embed_cover_path, saved_cover_path]:
-                if path and Path(path).exists():
-                    with contextlib.suppress(OSError):
-                        Path(path).unlink()
-            return None, None
+            # If both files exist, return early
+            if not save_artwork and not embed_artwork:
+                return embed_cover_path, saved_cover_path
 
-        # Apply size restrictions if configured
-        _apply_size_restrictions(
-            config, save_artwork, saved_cover_path, embed_artwork, embed_cover_path
-        )
+            # Prepare downloadables
+            downloadables, embed_cover_path, saved_cover_path = _prepare_downloadables(
+                session, folder, artwork_urls, config, save_artwork, embed_artwork
+            )
 
-        return embed_cover_path, saved_cover_path
+            if not downloadables:
+                return embed_cover_path, saved_cover_path
+
+            try:
+                await asyncio.gather(*downloadables)
+                # Verify files were actually downloaded
+                embed_cover_path, saved_cover_path = _verify_downloaded_files(
+                    embed_cover_path, saved_cover_path
+                )
+                # If embed expected but not found, re-check for fallback saved cover
+                if embed_artwork and not embed_cover_path:
+                    fallback_cover = Path(folder) / "cover.jpg"
+                    if fallback_cover.exists():
+                        embed_cover_path = str(fallback_cover)
+
+            except Exception:
+                logger.exception("Error downloading artwork")
+                # Clean up any partial files
+                for path in [embed_cover_path, saved_cover_path]:
+                    if path and Path(path).exists():
+                        with contextlib.suppress(OSError):
+                            Path(path).unlink()
+                return None, None
+
+            # Apply size restrictions if configured
+            _apply_size_restrictions(
+                config, save_artwork, saved_cover_path, embed_artwork, embed_cover_path
+            )
+
+            return embed_cover_path, saved_cover_path
 
 
-async def _download_image(session: aiohttp.ClientSession, url: str, file_path: str):
+async def _download_image(session: Any, url: str, file_path: str) -> None:
     """Download an image from URL to file path."""
     max_retries = 3
     retry_delay = 1.0
@@ -396,31 +420,12 @@ async def _download_image(session: aiohttp.ClientSession, url: str, file_path: s
                 # Ensure directory exists
                 Path(file_path).parent.mkdir(parents=True, exist_ok=True)
 
-                # Use a temporary file to avoid partial writes
-                temp_path = f"{file_path}.tmp"
+                temp_path = f"{file_path}.tmp.{uuid4().hex}"
                 try:
-                    async with aiofiles.open(temp_path, "wb") as f:
-                        async for chunk in response.content.iter_chunked(8192):
-                            await f.write(chunk)
-
-                    # Move temp file to final location atomically
-                    # Handle case where target file already exists
-                    if Path(file_path).exists():
-                        logger.debug(
-                            "Target file already exists, removing temp file: %s",
-                            file_path,
-                        )
-                        Path(temp_path).unlink()
-                        return
-
-                    Path(temp_path).rename(file_path)
-                    logger.debug("Downloaded artwork: %s -> %s", url, file_path)
-
+                    await _stream_to_file(response, temp_path)
+                    await _finalize_temp_file(temp_path, file_path)
                 except Exception:
-                    # Clean up temp file on error
-                    if Path(temp_path).exists():
-                        with contextlib.suppress(OSError):
-                            Path(temp_path).unlink()
+                    await _cleanup_temp_file(temp_path)
                     raise
                 else:
                     return
@@ -443,6 +448,42 @@ async def _download_image(session: aiohttp.ClientSession, url: str, file_path: s
             raise
 
 
+async def _stream_to_file(response: Any, temp_path: str) -> None:
+    """Stream HTTP response body to a temporary file path."""
+    async with aiofiles.open(temp_path, "wb") as f:
+        async for chunk in response.content.iter_chunked(8192):
+            await f.write(chunk)
+
+
+async def _finalize_temp_file(temp_path: str, file_path: str) -> None:
+    """Atomically move a downloaded temp file into final location, handling races."""
+    # Handle case where target file already exists
+    if Path(file_path).exists():
+        logger.debug("Target file already exists, removing temp file: %s", file_path)
+        await _cleanup_temp_file(temp_path)
+        return
+
+    try:
+        Path(temp_path).rename(file_path)
+    except FileExistsError:
+        # Another concurrent downloader won the race; remove our temp
+        with contextlib.suppress(OSError):
+            Path(temp_path).unlink()
+    else:
+        logger.debug("Downloaded artwork saved to %s", file_path)
+
+
+async def _cleanup_temp_file(temp_path: str) -> None:
+    """Attempt to remove a temporary file with brief retries on transient errors."""
+    if Path(temp_path).exists():
+        for _ in range(3):
+            try:
+                Path(temp_path).unlink()
+                break
+            except OSError:
+                await asyncio.sleep(0.1)
+
+
 def _get_largest_artwork_url(artwork_urls: dict[str, str]) -> str | None:
     """Get the largest available artwork URL."""
     # Priority order: original > large > medium > small > thumbnail
@@ -460,7 +501,7 @@ def _get_largest_artwork_url(artwork_urls: dict[str, str]) -> str | None:
     return None
 
 
-def downscale_image(image_path: str, max_dimension: int):
+def downscale_image(image_path: str, max_dimension: int) -> None:
     """Downscale an image in place given a maximum allowed dimension.
 
     Args:
@@ -524,3 +565,14 @@ def extract_artwork_urls(covers_data: Any) -> dict[str, str]:
         })
 
     return artwork_urls
+
+
+def build_artwork_config(source_settings: dict[str, Any]) -> dict[str, Any]:
+    """Build a normalized artwork configuration from source settings."""
+    return {
+        "embed_artwork": True,
+        "save_artwork": source_settings.get("save_artwork", False),
+        "embed_size": source_settings.get("artwork_size", "large"),
+        "embed_max_width": source_settings.get("artwork_max_width", 0),
+        "saved_max_width": source_settings.get("saved_artwork_max_width", 0),
+    }

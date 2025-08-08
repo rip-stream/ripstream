@@ -119,7 +119,7 @@ class QobuzDownloadProvider(BaseDownloadProvider):
 
             # Use the existing QobuzDownloader methods based on content type
             if content_type == ContentType.TRACK:
-                # Use the new method that handles album folder creation
+                # For a single track, rely on downloader to compute album folder and prefetch as needed
                 result = await self._downloader.download_track_with_album_folder(
                     content_id, download_directory
                 )
