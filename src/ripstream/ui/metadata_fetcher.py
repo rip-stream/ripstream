@@ -123,6 +123,12 @@ class MetadataFetcher(QThread):
             logger.exception("Failed to fetch metadata")
             self.error_occurred.emit(f"Failed to fetch metadata: {e!s}")
         finally:
+            # Ensure all background artwork tasks complete before the loop exits
+            try:
+                await self._await_outstanding_artwork_tasks()
+            except Exception:
+                logger.exception("Error while awaiting outstanding artwork tasks")
+
             # Clean up provider resources
             if self.provider:
                 try:
@@ -202,6 +208,20 @@ class MetadataFetcher(QThread):
             await self._fetch_album_artwork(album_metadata)
         except Exception:
             logger.exception("Failed to fetch artwork for album")
+
+    async def _await_outstanding_artwork_tasks(self) -> None:
+        """Await any outstanding artwork tasks to avoid cancellation on loop close."""
+        if not self._artwork_tasks:
+            return
+
+        # Take a snapshot to avoid mutation during iteration
+        pending_tasks = list(self._artwork_tasks)
+        try:
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
+        finally:
+            # Remove completed tasks from tracking set
+            for task in pending_tasks:
+                self._artwork_tasks.discard(task)
 
     async def _fetch_artwork(self, metadata: dict[str, Any]):
         """Fetch artwork for items in metadata."""
@@ -321,9 +341,6 @@ class MetadataFetcher(QThread):
 
     async def _fetch_artwork_from_url(self, artwork_url: str) -> QPixmap | None:
         """Fetch artwork from URL using aiohttp."""
-        # TODO: Certain artists have problematic URLs that cause aiohttp to hang.
-        # Sample: https://play.qobuz.com/artist/14671222
-        # It's always the last image in the album that fails.
         async with (
             aiohttp.ClientSession() as session,
             session.get(
