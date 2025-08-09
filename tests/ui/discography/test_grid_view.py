@@ -108,6 +108,20 @@ class TestAlbumArtGridView:
 
         assert blocker.args == [sample_album_item["id"]]
 
+    def test_update_active_statuses(self, grid_view, sample_album_item):
+        """Active statuses update individual tiles without affecting others."""
+        grid_view.add_item(sample_album_item)
+        w = grid_view.items[0]
+        # Set downloading
+        grid_view.update_active_statuses({sample_album_item["id"]}, set())
+        assert w.get_status() == "downloading"
+        # Set queued
+        grid_view.update_active_statuses(set(), {sample_album_item["id"]})
+        assert w.get_status() == "queued"
+        # Clear to idle
+        grid_view.update_active_statuses(set(), set())
+        assert w.get_status() == "idle"
+
     def test_grid_positioning(self, grid_view):
         """Test items are positioned correctly in grid."""
         # Add several items to test grid positioning

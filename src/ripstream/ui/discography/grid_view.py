@@ -206,3 +206,20 @@ class AlbumArtGridView(QScrollArea):
         for item in self.items:
             if isinstance(item, AlbumArtWidget):
                 item.update_download_status_from_albums(downloaded_albums)
+
+    def update_active_statuses(
+        self, downloading_album_ids: set[str], pending_album_ids: set[str]
+    ) -> None:
+        """Update active statuses (downloading/pending) for all items."""
+        for item in self.items:
+            if not isinstance(item, AlbumArtWidget):
+                continue
+            album_id = getattr(item, "item_id", "")
+            if not album_id:
+                continue
+            if album_id in downloading_album_ids:
+                item.set_downloading_status()
+            elif album_id in pending_album_ids and item.get_status() != "downloaded":
+                item.set_queued_status()
+            elif item.get_status() in {"queued", "downloading"}:
+                item.set_idle_status()

@@ -44,6 +44,8 @@ class DiscographyView(QWidget):
         self.pending_artwork = {}  # Store artwork updates until items are available
         self._consumed_artwork_ids = set()  # Track which artwork has been consumed
         self.downloaded_albums = set()  # Store downloaded album_id/source combinations
+        self._downloading_album_ids: set[str] = set()
+        self._pending_album_ids: set[str] = set()
         self.setup_ui()
 
     def update_downloaded_albums(self, downloaded_albums: set):
@@ -64,6 +66,31 @@ class DiscographyView(QWidget):
 
         # Also initialize child views if they don't have the state yet
         self._ensure_child_views_initialized()
+
+    def update_active_album_statuses(
+        self, downloading_album_ids: set[str], pending_album_ids: set[str]
+    ) -> None:
+        """Update active album statuses (downloading/pending) and refresh UI."""
+        self._downloading_album_ids = downloading_album_ids or set()
+        self._pending_album_ids = pending_album_ids or set()
+        # Update grid view widgets
+        for widget in self.grid_view.items:
+            album_id = getattr(widget, "item_id", "")
+            if not album_id:
+                continue
+            # Do not override already downloaded tiles
+            if widget.get_status() == "downloaded":
+                continue
+            if album_id in self._downloading_album_ids:
+                widget.set_downloading_status()
+            elif (
+                album_id in self._pending_album_ids
+                and widget.get_status() != "downloaded"
+            ):
+                widget.set_queued_status()
+            elif widget.get_status() in {"queued", "downloading"}:
+                # If no longer active and not downloaded, revert to idle
+                widget.set_idle_status()
 
     def _ensure_child_views_initialized(self):
         """Ensure child views have the current downloaded albums state."""
@@ -464,4 +491,13 @@ class DiscographyView(QWidget):
                 source = widget.item_data.get("source", "")
                 album_key = (album_id, source)
                 is_downloaded = album_key in self.downloaded_albums
-                widget.set_downloaded_status(is_downloaded)
+                if is_downloaded:
+                    widget.set_downloaded_status(True)
+                else:
+                    # Maintain active statuses if present
+                    if album_id in self._downloading_album_ids:
+                        widget.set_downloading_status()
+                    elif album_id in self._pending_album_ids:
+                        widget.set_queued_status()
+                    else:
+                        widget.set_idle_status()

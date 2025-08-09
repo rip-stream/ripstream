@@ -333,6 +333,9 @@ class DownloadsHistoryView(QWidget):
     remove_download = pyqtSignal(str)  # download_id
     clear_all_downloads = pyqtSignal()
     downloaded_albums_updated = pyqtSignal(set)  # set of (album_id, source) tuples
+    active_albums_updated = pyqtSignal(
+        set, set
+    )  # (downloading_album_ids, pending_album_ids)
 
     def __init__(self, parent=None, config: UserConfig | None = None):
         super().__init__(parent)
@@ -472,6 +475,7 @@ class DownloadsHistoryView(QWidget):
             # Update stats less frequently to avoid UI lag
             if progress % 5 == 0 or progress == 100:
                 self.update_stats()
+                self._emit_active_albums_update()
 
         except Exception:
             import logging
@@ -482,6 +486,7 @@ class DownloadsHistoryView(QWidget):
             self.downloads_table.update_download_progress(download_id, progress, status)
             if progress % 10 == 0 or progress == 100:
                 self.update_stats()
+                self._emit_active_albums_update()
 
     def update_download_status(self, download_id: str, status: str):
         """Update download status."""
@@ -521,6 +526,7 @@ class DownloadsHistoryView(QWidget):
                 download_id, current_progress, status_enum
             )
             self.update_stats()
+            self._emit_active_albums_update()
 
         except Exception:
             import logging
@@ -532,6 +538,7 @@ class DownloadsHistoryView(QWidget):
                 download_id, current_progress, status_enum
             )
             self.update_stats()
+            self._emit_active_albums_update()
 
     def update_statistics(self):
         """Update statistics - alias for update_stats."""
@@ -609,6 +616,7 @@ class DownloadsHistoryView(QWidget):
         self.load_downloads()
         self.update_stats()
         self._emit_downloaded_albums_update()
+        self._emit_active_albums_update()
 
     def _emit_downloaded_albums_update(self):
         """Emit signal with updated downloaded albums."""
@@ -620,6 +628,28 @@ class DownloadsHistoryView(QWidget):
 
             logger = logging.getLogger(__name__)
             logger.exception("Failed to emit downloaded albums update")
+
+    def _emit_active_albums_update(self):
+        """Emit sets of album IDs that are downloading and pending."""
+        try:
+            active = self.download_service.get_active_downloads()
+            downloading_albums = set()
+            pending_albums = set()
+            for record in active:
+                album_id = getattr(record, "album_id", None)
+                if not album_id:
+                    continue
+                status = getattr(record, "status", None)
+                if status == DownloadStatus.DOWNLOADING:
+                    downloading_albums.add(album_id)
+                elif status == DownloadStatus.PENDING:
+                    pending_albums.add(album_id)
+            self.active_albums_updated.emit(downloading_albums, pending_albums)
+        except Exception:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.exception("Failed to emit active albums update")
 
     def emit_downloaded_albums_signal(self):
         """Emit the downloaded albums signal with current data."""
@@ -662,6 +692,7 @@ class DownloadsHistoryView(QWidget):
 
             # Emit signal with downloaded albums
             self.downloaded_albums_updated.emit(downloaded_albums)
+            self._emit_active_albums_update()
 
         except Exception:
             # Log error but don't crash the UI
@@ -681,6 +712,7 @@ class DownloadsHistoryView(QWidget):
 
             # Update statistics
             self.update_stats()
+            self._emit_active_albums_update()
 
         except Exception:
             import logging
@@ -702,6 +734,7 @@ class DownloadsHistoryView(QWidget):
 
             # Update statistics
             self.update_stats()
+            self._emit_active_albums_update()
 
         except Exception:
             import logging

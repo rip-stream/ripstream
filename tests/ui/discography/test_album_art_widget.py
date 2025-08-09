@@ -225,6 +225,60 @@ class TestAlbumArtWidget:
         assert title_label.text() != ""
         assert artist_label.text() != ""
 
+    def test_download_button_initial_idle_state(self, widget: AlbumArtWidget):
+        """Download button should start in idle (enabled, download icon, tooltip)."""
+        btn = widget.download_btn
+        assert btn.isEnabled() is True
+        assert "Download" in btn.toolTip()
+
+    def test_set_queued_status_updates_button(self, widget: AlbumArtWidget):
+        """Queued state disables the button and sets queued styling."""
+        widget.set_queued_status()
+        btn = widget.download_btn
+        assert btn.isEnabled() is False
+        assert "Queued" in btn.toolTip()
+        assert widget.get_status() == "queued"
+
+    def test_set_downloading_status_updates_button(self, widget: AlbumArtWidget):
+        """Downloading state disables the button and sets downloading styling."""
+        widget.set_downloading_status()
+        btn = widget.download_btn
+        assert btn.isEnabled() is False
+        assert "Downloading" in btn.toolTip()
+        assert widget.get_status() == "downloading"
+
+    def test_set_downloaded_status_true(self, widget: AlbumArtWidget):
+        """Downloaded state sets check icon, disables clicks, and tooltip."""
+        widget.set_downloaded_status(True)
+        btn = widget.download_btn
+        assert btn.isEnabled() is True  # remains enabled for hover but click is no-op
+        assert "Already downloaded" in btn.toolTip()
+        assert widget.get_status() == "downloaded"
+
+    def test_set_downloaded_status_false_does_not_reset(self, widget: AlbumArtWidget):
+        """Calling with False should not reset an existing non-idle state."""
+        widget.set_queued_status()
+        widget.set_downloaded_status(False)
+        assert widget.get_status() == "queued"
+
+    def test_title_tooltip_only_when_truncated(self, qapp):
+        """Tooltip on widget should be set only when title is truncated."""
+        # Short title (no truncation)
+        w1 = AlbumArtWidget({"id": "a1", "title": "Short", "artist": "A"})
+        assert w1.toolTip() in (None, "")
+
+        # Long title (truncation expected)
+        long_title = "This is a very very long album title that will be cut"
+        w2 = AlbumArtWidget({
+            "id": "a2",
+            "title": long_title,
+            "artist": "A",
+            "year": 2024,
+            "hires": True,
+        })
+        assert w2.toolTip() is not None
+        assert long_title.split()[0] in w2.toolTip()
+
     def test_load_artwork_method(self, qapp):
         """Test the load_artwork method creates proper placeholder."""
         item_data = {"id": "test", "title": "Test Album", "artist": "Test Artist"}

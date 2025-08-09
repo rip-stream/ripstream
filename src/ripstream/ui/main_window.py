@@ -129,6 +129,10 @@ class MainWindow(QMainWindow):
             downloads_view.downloaded_albums_updated.connect(
                 self.handle_downloaded_albums_updated
             )
+            # Propagate active album status to discography view
+            downloads_view.active_albums_updated.connect(
+                self.handle_active_albums_updated
+            )
 
     def _setup_main_panel_views(self):
         """Configure the main panel with the appropriate view components."""
@@ -397,6 +401,16 @@ class MainWindow(QMainWindow):
         discography_view = self.ui_manager.get_discography_view()
         if discography_view:
             discography_view.update_downloaded_albums(downloaded_albums)
+
+    def handle_active_albums_updated(
+        self, downloading_album_ids: set, pending_album_ids: set
+    ):
+        """Handle active album status updates (downloading/pending)."""
+        discography_view = self.ui_manager.get_discography_view()
+        if discography_view:
+            discography_view.update_active_album_statuses(
+                downloading_album_ids, pending_album_ids
+            )
 
     def handle_metadata_ready(self, metadata: dict):
         """Handle metadata fetched from streaming service."""
