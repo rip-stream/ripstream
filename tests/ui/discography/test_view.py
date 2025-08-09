@@ -58,6 +58,15 @@ class TestDiscographyView:
         assert hasattr(discography_view, "sort_artist_btn")
         assert hasattr(discography_view, "sort_year_btn")
 
+    def test_initial_sort_ui_inactive(self, discography_view: DiscographyView):
+        """On initial load, no sort should be visually active and no arrows shown."""
+        assert discography_view.sort_title_btn.isChecked() is False
+        assert discography_view.sort_artist_btn.isChecked() is False
+        assert discography_view.sort_year_btn.isChecked() is False
+        assert discography_view.sort_title_btn.text() == "Title"
+        assert discography_view.sort_artist_btn.text() == "Artist"
+        assert discography_view.sort_year_btn.text() == "Year"
+
     def test_stacked_widget_setup(self, discography_view: DiscographyView):
         """Test stacked widget and views setup."""
         assert hasattr(discography_view, "stacked_widget")
@@ -228,20 +237,33 @@ class TestDiscographyView:
 
     def test_sort_items_title(self, discography_view: DiscographyView, qtbot):
         """Test sorting items by title."""
-        # This would typically trigger sorting in the current view
-        # We can test that the signal is connected
         discography_view.sort_items("title")
-        # The actual sorting logic would be in the individual views
 
     def test_sort_items_artist(self, discography_view: DiscographyView):
         """Test sorting items by artist."""
         discography_view.sort_items("artist")
-        # The actual sorting logic would be in the individual views
 
     def test_sort_items_year(self, discography_view: DiscographyView):
         """Test sorting items by year."""
         discography_view.sort_items("year")
-        # The actual sorting logic would be in the individual views
+
+    def test_sort_toggle_updates_button_state(self, discography_view: DiscographyView):
+        """Clicking the same sort button toggles arrow and checked state remains on same key."""
+        # Initial state: no sort applied
+        assert discography_view.sort_title_btn.isChecked() is False
+        first_label = discography_view.sort_title_btn.text()
+
+        # Toggle by clicking same key
+        discography_view.sort_items("title")
+        second_label = discography_view.sort_title_btn.text()
+        assert first_label != second_label  # arrow should flip
+        assert discography_view.sort_title_btn.isChecked() is True
+
+        # Switch key then ensure only that button is checked
+        discography_view.sort_items("artist")
+        assert discography_view.sort_artist_btn.isChecked() is True
+        assert discography_view.sort_title_btn.isChecked() is False
+        assert discography_view.sort_year_btn.isChecked() is False
 
     @pytest.mark.parametrize("view_type", ["grid", "list"])
     def test_view_switching_preserves_content(

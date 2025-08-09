@@ -33,6 +33,14 @@ class DiscographyView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_view = "grid"
+        self._current_sort_key = "title"
+        self._current_sort_desc = False
+        self._sort_applied = False
+        self._sort_base_labels: dict[str, str] = {
+            "title": "Title",
+            "artist": "Artist",
+            "year": "Year",
+        }
         self.pending_artwork = {}  # Store artwork updates until items are available
         self._consumed_artwork_ids = set()  # Track which artwork has been consumed
         self.downloaded_albums = set()  # Store downloaded album_id/source combinations
@@ -102,10 +110,13 @@ class DiscographyView(QWidget):
         # Sort controls
         self.sort_label = QLabel("Sort by:")
         self.sort_title_btn = QPushButton("Title")
+        self.sort_title_btn.setCheckable(True)
         self.sort_title_btn.setIcon(qta.icon("fa5s.font"))
         self.sort_artist_btn = QPushButton("Artist")
+        self.sort_artist_btn.setCheckable(True)
         self.sort_artist_btn.setIcon(qta.icon("fa5s.user"))
         self.sort_year_btn = QPushButton("Year")
+        self.sort_year_btn.setCheckable(True)
         self.sort_year_btn.setIcon(qta.icon("fa5s.calendar-alt"))
 
         self.sort_title_btn.clicked.connect(lambda: self.sort_items("title"))
@@ -123,6 +134,14 @@ class DiscographyView(QWidget):
         controls_layout.addStretch()
 
         layout.addLayout(controls_layout)
+
+        # Sort buttons group (exclusive selection)
+        # Note: we don't rely on the group for toggling direction; it only reflects active key visually
+        self.sort_button_group = QButtonGroup()
+        self.sort_button_group.setExclusive(True)
+        self.sort_button_group.addButton(self.sort_title_btn)
+        self.sort_button_group.addButton(self.sort_artist_btn)
+        self.sort_button_group.addButton(self.sort_year_btn)
 
         # Stacked widget for different views
         self.stacked_widget = QStackedWidget()
@@ -145,6 +164,9 @@ class DiscographyView(QWidget):
         # Set default view
         self.switch_view("grid")
 
+        # Initialize sort UI state
+        self._update_sort_ui()
+
     def switch_view(self, view_type: str):
         """Switch between grid and list views."""
         self.current_view = view_type
@@ -159,6 +181,10 @@ class DiscographyView(QWidget):
             self.list_view_btn.setChecked(True)
 
         self.view_changed.emit(view_type)
+
+        # Reapply current sort to the newly shown view for consistency (if applied)
+        self._apply_sort_to_views()
+        self._update_sort_ui()
 
     def add_item(self, item_data: dict[str, Any], service: str | None = None):
         """Add an item to both views."""
@@ -176,6 +202,10 @@ class DiscographyView(QWidget):
         # Track if artwork was consumed for this item
         if item_id in self.pending_artwork:
             self._consumed_artwork_ids.add(item_id)
+
+        # Maintain sorting live if already applied
+        if self._sort_applied:
+            self._apply_sort_to_views()
 
     def add_album_content(
         self,
@@ -237,6 +267,10 @@ class DiscographyView(QWidget):
             track_id = track.get("id", "")
             if track_id in self.pending_artwork:
                 self._consumed_artwork_ids.add(track_id)
+
+        # Maintain sorting live if already applied
+        if self._sort_applied:
+            self._apply_sort_to_views()
 
     def update_item_artwork(self, item_id: str, pixmap: QPixmap):
         """Update artwork for a specific item in both views."""
@@ -310,6 +344,10 @@ class DiscographyView(QWidget):
         # Update album widgets opacity based on current downloaded albums
         self._update_album_downloaded_status()
 
+        # Reapply current sort after content changes (if applied)
+        self._apply_sort_to_views()
+        self._update_sort_ui()
+
     def add_album_progressively(self, album_metadata: dict[str, Any]):
         """Add a single album to the view progressively during streaming."""
         if album_metadata is None:
@@ -327,19 +365,87 @@ class DiscographyView(QWidget):
                 self.add_album_content(album_info, tracks, service)
                 # Update opacity for the newly added album
                 self._update_album_downloaded_status()
+                # Maintain sorting live during progressive updates if applied
+                if self._sort_applied:
+                    self._apply_sort_to_views()
 
     def sort_items(self, sort_by: str):
-        """Sort items by the specified criteria."""
-        # Delegate sorting to both views so switching views preserves order
+        """Sort items by the specified criteria.
+
+        Clicking the same sort key toggles ascending/descending.
+        """
+        if not self._sort_applied:
+            # First application of sort: always start ascending
+            self._current_sort_key = sort_by
+            self._current_sort_desc = False
+            self._sort_applied = True
+        else:
+            if sort_by == self._current_sort_key:
+                self._current_sort_desc = not self._current_sort_desc
+            else:
+                self._current_sort_key = sort_by
+                self._current_sort_desc = False
+
+        self._apply_sort_to_views()
+        self._update_sort_ui()
+
+    def _apply_sort_to_views(self) -> None:
+        """Apply current sort settings to both views."""
+        if not getattr(self, "_sort_applied", False):
+            return
+
+        sort_key = getattr(self, "_current_sort_key", "title")
+        descending = getattr(self, "_current_sort_desc", False)
+
         if hasattr(self, "grid_view") and self.grid_view:
             sort_func = getattr(self.grid_view, "sort_items", None)
             if callable(sort_func):
-                sort_func(sort_by)
+                sort_func(sort_key, descending)
 
         if hasattr(self, "list_view") and self.list_view:
             sort_func = getattr(self.list_view, "sort_items", None)
             if callable(sort_func):
-                sort_func(sort_by)
+                sort_func(sort_key, descending)
+
+    def _update_sort_ui(self) -> None:
+        """Reflect current sort key/direction in button texts and check state."""
+        key = self._current_sort_key
+        desc = self._current_sort_desc
+        applied = self._sort_applied
+
+        def label(base: str, active: bool) -> str:
+            if not active or not applied:
+                return base
+            return f"{base} {'▼' if desc else '▲'}"
+
+        # Update texts
+        self.sort_title_btn.setText(
+            label(self._sort_base_labels["title"], key == "title")
+        )
+        self.sort_artist_btn.setText(
+            label(self._sort_base_labels["artist"], key == "artist")
+        )
+        self.sort_year_btn.setText(label(self._sort_base_labels["year"], key == "year"))
+
+        # Update checked state
+        if not applied:
+            # No sort applied yet: no button appears active
+            self.sort_title_btn.setChecked(False)
+            self.sort_artist_btn.setChecked(False)
+            self.sort_year_btn.setChecked(False)
+        else:
+            if key == "title":
+                self.sort_title_btn.setChecked(True)
+                self.sort_artist_btn.setChecked(False)
+                self.sort_year_btn.setChecked(False)
+            elif key == "artist":
+                self.sort_title_btn.setChecked(False)
+                self.sort_artist_btn.setChecked(True)
+                self.sort_year_btn.setChecked(False)
+            else:
+                self.sort_title_btn.setChecked(False)
+                self.sort_artist_btn.setChecked(False)
+                self.sort_year_btn.setChecked(True)
 
     def set_loading_state(self, loading: bool):
         """Set loading state for the view."""

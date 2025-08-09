@@ -73,6 +73,32 @@ class TestAlbumArtGridView:
         assert grid_view.items[0].item_id == sample_album_item["id"]
         assert grid_view.items[1].item_id == sample_track_item["id"]
 
+    def test_sort_items_api(self, grid_view):
+        """Ensure sort_items reorders widgets by key and direction."""
+        items = [
+            {"id": "2", "title": "B", "artist": "Z", "year": 2021},
+            {"id": "1", "title": "A", "artist": "A", "year": 2020},
+        ]
+
+        for data in items:
+            grid_view.add_item(data)
+
+        # Title asc
+        grid_view.sort_items("title", descending=False)
+        assert [w.item_data["title"] for w in grid_view.items] == ["A", "B"]
+
+        # Title desc
+        grid_view.sort_items("title", descending=True)
+        assert [w.item_data["title"] for w in grid_view.items] == ["B", "A"]
+
+        # Artist asc
+        grid_view.sort_items("artist", descending=False)
+        assert [w.item_data["artist"] for w in grid_view.items] == ["A", "Z"]
+
+        # Year desc
+        grid_view.sort_items("year", descending=True)
+        assert [w.item_data.get("year", 0) for w in grid_view.items] == [2021, 2020]
+
     def test_item_signal_connection(self, grid_view, sample_album_item, qtbot):
         """Test that item signals are connected properly."""
         with qtbot.waitSignal(grid_view.item_selected, timeout=1000) as blocker:

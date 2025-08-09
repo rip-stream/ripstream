@@ -96,7 +96,7 @@ class AlbumArtGridView(QScrollArea):
                 self._current_downloaded_albums
             )
 
-    def sort_items(self, sort_by: str):
+    def sort_items(self, sort_by: str, descending: bool = False):
         """Sort grid items in-place and refresh layout.
 
         Supported sort keys: "title", "artist", "year" (ascending).
@@ -137,7 +137,7 @@ class AlbumArtGridView(QScrollArea):
             )
 
         # Reorder widgets and refresh positions
-        self.items.sort(key=item_key)
+        self.items.sort(key=item_key, reverse=descending)
         self.update_grid_layout()
 
     def update_item_artwork(self, item_id: str, pixmap: QPixmap):

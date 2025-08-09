@@ -360,6 +360,32 @@ class TestDiscographyListView:
         assert first_title.text() == "A Album"
         assert second_title.text() == "B Album"
 
+    def test_sort_items_api(self, list_view):
+        """Ensure sort_items API maps keys to correct columns and toggles direction."""
+        items = [
+            {"id": "1", "title": "B", "artist": "Z", "type": "Album", "year": 2020},
+            {"id": "2", "title": "A", "artist": "A", "type": "Album", "year": 2021},
+        ]
+
+        for item in items:
+            list_view.add_item(item)
+
+        # Title asc
+        list_view.sort_items("title", descending=False)
+        assert list_view.item(0, 0).text() == "A"
+
+        # Title desc
+        list_view.sort_items("title", descending=True)
+        assert list_view.item(0, 0).text() == "B"
+
+        # Artist asc
+        list_view.sort_items("artist", descending=False)
+        assert list_view.item(0, 1).text() == "A"
+
+        # Year desc
+        list_view.sort_items("year", descending=True)
+        assert list_view.item(0, 3).text() in ("2021", "2021")
+
     def test_row_selection_behavior(self, list_view, sample_album_item):
         """Test row selection behavior."""
         list_view.add_item(sample_album_item)

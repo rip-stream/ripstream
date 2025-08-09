@@ -59,3 +59,29 @@ def test_grid_only_once_then_tracks_multiple(sample_album_metadata: dict) -> Non
     assert view.list_view.rowCount() >= len(
         sample_album_metadata["items"]
     )  # may append
+
+
+@pytest.mark.usefixtures("qapp")
+def test_progressive_sort_is_maintained(sample_album_metadata: dict) -> None:
+    """If sorting was applied, progressive additions should respect it."""
+    view = DiscographyView()
+
+    # Apply sort by title ascending before any items
+    view.sort_items("title")
+
+    # First add lightweight album (no tracks yet)
+    lightweight = sample_album_metadata.copy()
+    lightweight["items"] = []
+    view.set_content(lightweight)
+
+    # Now progressively add tracks in reverse-sorted order to attempt to break sorting
+    tracks = list(sample_album_metadata["items"])  # type: ignore[index]
+    # Reverse titles to simulate out-of-order arrival
+    tracks.reverse()
+    view.add_album_content(sample_album_metadata["album_info"], tracks, "Qobuz")
+
+    # After progressive add, list view should be sorted by title asc
+    if view.list_view.rowCount() >= 2:
+        first = view.list_view.item(0, 0).text()
+        second = view.list_view.item(1, 0).text()
+        assert first <= second
