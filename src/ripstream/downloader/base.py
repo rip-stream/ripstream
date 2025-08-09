@@ -328,11 +328,22 @@ class BaseDownloader(ABC):
             ),
             error_message=None,
             retry_count=0,
-            metadata={},
+            metadata={
+                "content_id": content.content_id,
+                "content_type": getattr(
+                    content.content_type, "value", content.content_type
+                ),
+                "source": content.source,
+            },
         )
 
     async def _handle_download_error(
-        self, error: Exception, download_id: UUID, file_path: str, start_time: datetime
+        self,
+        error: Exception,
+        download_id: UUID,
+        file_path: str,
+        start_time: datetime,
+        content: DownloadableContent | None = None,
     ) -> DownloadResult:
         """Handle download errors and cleanup."""
         error_message = str(error)
@@ -353,7 +364,19 @@ class BaseDownloader(ABC):
             average_speed_bps=None,
             error_message=error_message,
             retry_count=0,
-            metadata={},
+            metadata=(
+                {
+                    "content_id": getattr(content, "content_id", None),
+                    "content_type": (
+                        getattr(getattr(content, "content_type", None), "value", None)
+                        if content is not None
+                        else None
+                    ),
+                    "source": getattr(content, "source", None),
+                }
+                if content is not None
+                else {}
+            ),
         )
 
     async def download_multiple(

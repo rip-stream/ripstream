@@ -137,8 +137,14 @@ class QobuzDownloadProvider(BaseDownloadProvider):
                     content_id, download_directory
                 )
 
+            # Overall success is based on reported result success only.
+            # Filesystem existence checks are handled at the worker level.
+            overall_success = bool(results) and all(
+                getattr(r, "success", False) for r in results
+            )
+
             return self._create_download_result(
-                success=True,
+                success=overall_success,
                 download_results=results,
                 metadata={"content_type": content_type.value, "content_id": content_id},
             )

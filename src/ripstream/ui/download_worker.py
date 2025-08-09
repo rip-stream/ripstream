@@ -49,6 +49,12 @@ class DownloadWorker(QThread):
         # Mapping from UUID to database download ID
         self._download_id_mapping: dict[UUID, str] = {}
         self._current_download_id: str | None = None
+        # Retry settings derived from user config
+        try:
+            cfg_val = getattr(self.config.downloads, "max_retries", 3)
+            self._max_track_retries: int = max(0, int(cfg_val))
+        except (TypeError, ValueError):
+            self._max_track_retries = 3
 
         # Connect progress check signal to slot
         self.progress_check_requested.connect(self._handle_progress_check_request)
@@ -473,17 +479,18 @@ class DownloadWorker(QThread):
 
     def _determine_download_directory(self, download_info: dict) -> str:
         """Determine download directory based on user settings."""
-        download_dir = str(self.config.downloads.folder)
+        base_folder = Path(self.config.downloads.folder)
 
-        if self.config.downloads.source_subdirectories:
-            download_dir = str(
-                self.config.downloads.folder / download_info["source"].upper()
-            )
+        use_source_subdirs = getattr(
+            self.config.downloads, "source_subdirectories", False
+        )
+        if use_source_subdirs:
+            base_folder = base_folder / download_info["source"].upper()
 
         # Create directory if it doesn't exist
-        Path(download_dir).mkdir(parents=True, exist_ok=True)
+        base_folder.mkdir(parents=True, exist_ok=True)
 
-        return download_dir
+        return str(base_folder)
 
     def _execute_download(
         self, provider: Any, download_info: dict, download_dir: str
@@ -501,12 +508,118 @@ class DownloadWorker(QThread):
         self, result: Any, download_info: dict, download_id: str
     ):
         """Handle download result and emit appropriate signals."""
-        if result.success:
+        results = self._normalize_provider_results(result)
+        retryable_failures = self._get_retryable_failures(results)
+
+        # Retry loop up to configured limit
+        if retryable_failures:
+            retryable_failures = self._retry_failures(download_info, retryable_failures)
+
+        overall_success = not retryable_failures
+        if overall_success:
             message = f"Successfully downloaded {download_info['title']}"
             self.download_completed.emit(download_id, True, message)
         else:
-            error_message = result.error_message or "Download failed"
+            error_message = self._summarize_errors(results, retryable_failures)
             self.download_completed.emit(download_id, False, error_message)
+
+    def _normalize_provider_results(self, result: Any) -> list[Any]:
+        """Normalize provider result(s) into a list."""
+        try:
+            if hasattr(result, "download_results"):
+                return list(result.download_results or [])
+        except (AttributeError, TypeError) as e:
+            logger.warning("Failed to normalize provider results: %s", e)
+        return [result]
+
+    def _get_retryable_failures(self, results: list[Any]) -> list[Any]:
+        """Identify results that should be retried at the worker level."""
+        retryable: list[Any] = []
+        for r in results:
+            try:
+                success = getattr(r, "success", False)
+                file_path = getattr(r, "file_path", None)
+                file_exists = bool(file_path) and Path(str(file_path)).exists()
+                if (not success) or (file_path and not file_exists):
+                    if not success and not file_path:
+                        logger.info("Retrying failed item without file_path")
+                    elif file_path and not file_exists:
+                        logger.info("Retrying missing file on disk: %s", file_path)
+                    retryable.append(r)
+            except (AttributeError, TypeError, OSError) as e:
+                logger.warning("Error evaluating result for retry: %s", e)
+                continue
+        return retryable
+
+    def _retry_failures(self, download_info: dict, failures: list[Any]) -> list[Any]:
+        """Retry failures up to configured max attempts; return remaining failures."""
+        attempt = 0
+        retryable = failures
+        while retryable and attempt <= self._max_track_retries:
+            attempt += 1
+            retryable = self._perform_retry_pass(download_info, retryable, attempt)
+        return retryable
+
+    def _perform_retry_pass(
+        self, download_info: dict, current_failures: list[Any], attempt: int
+    ) -> list[Any]:
+        """Perform a single retry pass; return the subset that still fails."""
+        remaining: list[Any] = []
+        for failed in current_failures:
+            try:
+                retry_result = self._run_retry(download_info)
+                retry_results = self._normalize_provider_results(retry_result)
+                if not self._has_recovered_results(retry_results):
+                    remaining.append(failed)
+            except (OSError, RuntimeError, ValueError, AttributeError) as e:
+                logger.warning("Retry attempt %d failed: %s", attempt, e)
+                remaining.append(failed)
+        return remaining
+
+    def _run_retry(self, download_info: dict) -> Any:
+        """Execute a retry by using an existing provider, creating one, or the fast path for tests."""
+        provider = getattr(self, "_current_provider", None)
+        download_dir = self._determine_download_directory(download_info)
+
+        if self._loop is None and provider is None:
+            return self._execute_download(None, download_info, download_dir)
+
+        if provider is None:
+            if not self._loop:
+                self._loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self._loop)
+            try:
+                provider = self._create_and_authenticate_provider(download_info)
+            except (AuthenticationError, OSError, RuntimeError, ValueError) as e:
+                logger.warning("Retry provider setup failed: %s", e)
+                return self._execute_download(None, download_info, download_dir)
+
+        return self._execute_download(provider, download_info, download_dir)
+
+    def _has_recovered_results(self, retry_results: list[Any]) -> bool:
+        """Check if any result indicates success with a present file when provided."""
+        for rr in retry_results:
+            rr_success = getattr(rr, "success", False)
+            rr_file = getattr(rr, "file_path", None)
+            rr_exists = not rr_file or Path(str(rr_file)).exists()
+            if rr_success and rr_exists:
+                return True
+        return False
+
+    def _summarize_errors(self, results: list[Any], failures: list[Any]) -> str:
+        """Build a concise error summary string for UI display."""
+        if failures:
+            parts = []
+            for r in failures:
+                msg = getattr(r, "error_message", None)
+                parts.append(msg or "Download failed")
+            return ", ".join(parts)
+        if results:
+            return (
+                getattr(results[0], "error_message", "Download failed")
+                or "Download failed"
+            )
+        return "Download failed"
 
     def _cleanup_session_manager(self):
         """Clean up the session manager."""

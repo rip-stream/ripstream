@@ -82,6 +82,10 @@ def test_progressive_sort_is_maintained(sample_album_metadata: dict) -> None:
 
     # After progressive add, list view should be sorted by title asc
     if view.list_view.rowCount() >= 2:
-        first = view.list_view.item(0, 0).text()
-        second = view.list_view.item(1, 0).text()
+        first_item = view.list_view.item(0, 0)
+        second_item = view.list_view.item(1, 0)
+        assert first_item is not None
+        assert second_item is not None
+        first = first_item.text()
+        second = second_item.text()
         assert first <= second
