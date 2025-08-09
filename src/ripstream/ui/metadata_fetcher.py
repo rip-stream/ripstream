@@ -83,7 +83,7 @@ class MetadataFetcher(QThread):
     async def _fetch_metadata(self):
         """Fetch metadata asynchronously using the appropriate provider."""
         try:
-            self.progress_updated.emit(10, "Initializing metadata provider...")
+            # Initialization of the provider
 
             # Create provider for the service
             if not MetadataProviderFactory.is_service_supported(
@@ -98,9 +98,8 @@ class MetadataFetcher(QThread):
                 self.parsed_url.service, self.credentials
             )
 
-            self.progress_updated.emit(20, "Authenticating with service...")
-
             # Authenticate with the service
+
             if not await self.provider.authenticate():
                 self.error_occurred.emit(
                     f"Failed to authenticate with {self.provider.service_name}"
@@ -112,24 +111,18 @@ class MetadataFetcher(QThread):
             with contextlib.suppress(AttributeError):
                 self.provider.artist_item_filter = self.artist_item_filter
 
-            self.progress_updated.emit(50, "Fetching metadata...")
-
             # Fetch metadata based on content type
             metadata_result = await self._fetch_content_metadata()
-
-            self.progress_updated.emit(80, "Processing metadata...")
 
             # For artist content with streaming, emit initial metadata but skip artwork
             # since albums are being streamed individually with their own artwork
             content_type = metadata_result.data.get("content_type", "")
             metadata_result.data["service"] = self.parsed_url.service.value
             if content_type == "artist":
-                self.progress_updated.emit(100, "Artist metadata fetched successfully")
                 # Emit initial artist metadata to set up the UI, then albums stream individually
                 self.metadata_fetched.emit(metadata_result.data)
             else:
                 await self._fetch_artwork(metadata_result.data)
-                self.progress_updated.emit(100, "Metadata fetched successfully")
                 self.metadata_fetched.emit(metadata_result.data)
 
         except Exception as e:
@@ -240,8 +233,6 @@ class MetadataFetcher(QThread):
 
     async def _fetch_artwork(self, metadata: dict[str, Any]):
         """Fetch artwork for items in metadata."""
-        self.progress_updated.emit(80, "Fetching artwork...")
-
         content_type = metadata.get("content_type", "")
         logger.info("Fetching artwork for content_type: %s", content_type)
 
