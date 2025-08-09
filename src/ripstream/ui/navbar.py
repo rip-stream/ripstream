@@ -156,14 +156,6 @@ class NavigationBar(QToolBar):
         self.downloads_action.setCheckable(True)
         self.downloads_action.triggered.connect(lambda: self.switch_view("downloads"))
 
-        # Add separator
-        self.addSeparator()
-
-        # Additional controls
-        self.refresh_action = self.addAction("Refresh")
-        self.refresh_action.setIcon(qta.icon("fa5s.sync-alt"))
-        self.refresh_action.triggered.connect(self.refresh_current_view)
-
     def switch_view(self, view_name: str):
         """Switch between different views."""
         # Update button states
@@ -172,14 +164,6 @@ class NavigationBar(QToolBar):
 
         # Emit view change signal
         self.view_changed.emit(view_name)
-
-    def refresh_current_view(self):
-        """Refresh the current view."""
-        # Determine current view and emit refresh signal
-        if self.discography_action.isChecked():
-            self.view_changed.emit("discography_refresh")
-        elif self.downloads_action.isChecked():
-            self.view_changed.emit("downloads_refresh")
 
     def set_loading_state(self, loading: bool):
         """Set the loading state of the navigation bar."""

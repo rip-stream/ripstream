@@ -199,11 +199,6 @@ class TestNavigationBar:
         assert navbar.discography_action.isCheckable() is True
         assert navbar.downloads_action.isCheckable() is True
 
-    def test_refresh_action(self, navbar):
-        """Test refresh action."""
-        assert hasattr(navbar, "refresh_action")
-        assert navbar.refresh_action.text() == "Refresh"
-
     def test_url_signal_forwarding(self, navbar, qtbot):
         """Test URL signal forwarding."""
         test_url = "https://open.qobuz.com/album/123"
@@ -245,34 +240,6 @@ class TestNavigationBar:
 
         assert blocker.args == ["downloads"]
 
-    def test_refresh_current_view_discography(self, navbar, qtbot):
-        """Test refreshing current view when discography is active."""
-        navbar.switch_view("discography")
-
-        with qtbot.waitSignal(navbar.view_changed, timeout=1000) as blocker:
-            navbar.refresh_current_view()
-
-        assert blocker.args == ["discography_refresh"]
-
-    def test_refresh_current_view_downloads(self, navbar, qtbot):
-        """Test refreshing current view when downloads is active."""
-        navbar.switch_view("downloads")
-
-        with qtbot.waitSignal(navbar.view_changed, timeout=1000) as blocker:
-            navbar.refresh_current_view()
-
-        assert blocker.args == ["downloads_refresh"]
-
-    def test_refresh_action_trigger(self, navbar, qtbot):
-        """Test refresh action trigger."""
-        # Set to discography view first
-        navbar.switch_view("discography")
-
-        with qtbot.waitSignal(navbar.view_changed, timeout=1000) as blocker:
-            navbar.refresh_action.trigger()
-
-        assert blocker.args == ["discography_refresh"]
-
     def test_loading_state(self, navbar):
         """Test loading state changes."""
         # Initially not loading
@@ -309,12 +276,12 @@ class TestNavigationBar:
         """Test that toolbar actions are in correct order."""
         actions = navbar.actions()
 
-        # Should have URL widget, separator, view actions, separator, refresh
-        assert len(actions) >= 5
+        # Should have URL widget, separator, and view actions
+        assert len(actions) >= 3
 
-        # Check for separators
+        # Check for separators (only one expected now)
         separator_count = sum(1 for action in actions if action.isSeparator())
-        assert separator_count >= 2
+        assert separator_count >= 1
 
     def test_view_button_exclusivity(self, navbar):
         """Test that view buttons are mutually exclusive."""
