@@ -123,6 +123,31 @@ class BaseMetadataProvider(ABC):
         """
         ...
 
+    async def fetch_playlist_metadata_streaming(
+        self,
+        playlist_id: str,
+        album_callback: Callable | None = None,  # noqa: ARG002
+        counter_init_callback: Callable | None = None,  # noqa: ARG002
+    ) -> MetadataResult:
+        """
+        Fetch playlist metadata with streaming of albums referenced by the playlist.
+
+        This default implementation falls back to the non-streaming
+        fetch_playlist_metadata and returns a basic playlist item without
+        streaming any albums. Providers should override to implement efficient
+        album streaming for playlists.
+
+        Args:
+            playlist_id: The playlist ID to fetch
+            album_callback: Optional callback invoked for each album fetched
+            counter_init_callback: Optional callback to initialize progress counter
+
+        Returns
+        -------
+            MetadataResult describing the playlist (items may be empty).
+        """
+        return await self.fetch_playlist_metadata(playlist_id)
+
     @property
     def is_authenticated(self) -> bool:
         """Check if the provider is authenticated."""

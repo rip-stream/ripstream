@@ -85,6 +85,7 @@ class PlaylistTrack(MetadataContainer):
 
     track_id: str = Field(..., description="Track ID")
     position: int = Field(..., description="Position in playlist (1-based)")
+    album_id: str | None = Field(None, description="Album ID for the track, if known")
     added_at: str | None = Field(None, description="When track was added to playlist")
     added_by: str | None = Field(None, description="Who added the track")
 
@@ -217,6 +218,7 @@ class Playlist(DownloadableMedia, SearchableMedia):
                 playlist_track = PlaylistTrack(
                     track_id=track_data.get("id", ""),
                     position=track_data.get("position", i),
+                    album_id=track_data.get("album_id"),
                     added_at=track_data.get("added_at"),
                     added_by=track_data.get("added_by"),
                     custom_title=track_data.get("custom_title"),

@@ -142,6 +142,7 @@ class QobuzDownloader(BaseDownloader):
             "title": qobuz_track.title,
             "artist": qobuz_track.artist_name,
             "album": qobuz_track.album_title,
+            "album_id": str(qobuz_track.album.get("id")) if qobuz_track.album else None,
             "album_artist": qobuz_track.album_artist,
             "track_number": qobuz_track.track_number,
             "disc_number": qobuz_track.disc_number,
@@ -231,17 +232,26 @@ class QobuzDownloader(BaseDownloader):
             "total_duration": qobuz_playlist.duration,
             "is_public": qobuz_playlist.is_public,
             "is_collaborative": qobuz_playlist.is_collaborative,
+            # Include raw playlist response so higher layers can inspect track album refs
+            "raw_playlist": qobuz_playlist.raw_data,
         }
 
         # Extract tracks with position information
         tracks = []
         if qobuz_playlist.tracks and "items" in qobuz_playlist.tracks:
             for i, track_data in enumerate(qobuz_playlist.tracks["items"], 1):
+                album_id = None
+                try:
+                    album_id = str(track_data.get("album", {}).get("id"))
+                except Exception:  # noqa: BLE001
+                    album_id = None
                 tracks.append({
                     "id": str(track_data["id"]),
                     "position": i,
                     "added_at": None,  # Qobuz doesn't provide this
                     "added_by": None,  # Qobuz doesn't provide this
+                    # Helpful hint for providers to avoid N+1 lookups
+                    "album_id": album_id,
                 })
 
         return Playlist.from_source_data(

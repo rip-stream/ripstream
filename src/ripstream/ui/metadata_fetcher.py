@@ -171,7 +171,12 @@ class MetadataFetcher(QThread):
         if self.parsed_url.content_type == ContentType.TRACK:
             return await self.provider.fetch_track_metadata(content_id)
         if self.parsed_url.content_type == ContentType.PLAYLIST:
-            return await self.provider.fetch_playlist_metadata(content_id)
+            # Stream playlist as a collection of albums, mirroring artist flow
+            return await self.provider.fetch_playlist_metadata_streaming(
+                content_id,
+                album_callback=self._on_album_fetched,
+                counter_init_callback=self._initialize_artist_counter,
+            )
         if self.parsed_url.content_type == ContentType.ARTIST:
             # Use streaming approach for artist metadata to prevent UI blocking
             return await self.provider.fetch_artist_metadata_streaming(

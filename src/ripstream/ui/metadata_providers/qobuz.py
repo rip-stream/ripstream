@@ -454,6 +454,114 @@ class QobuzMetadataProvider(BaseMetadataProvider):
             },
         )
 
+    async def fetch_playlist_metadata_streaming(
+        self,
+        playlist_id: str,
+        album_callback=None,
+        counter_init_callback=None,
+    ) -> MetadataResult:
+        """Fetch playlist as a collection of albums and stream albums progressively.
+
+        Flow:
+        - Resolve playlist metadata once
+        - Extract album IDs from the playlist's tracks and deduplicate
+        - Immediately emit an initial metadata result for the playlist context
+        - Stream albums for the distinct album IDs via album_callback, reusing
+          the existing album fetching pipeline
+        """
+        if not self._authenticated or not self.qobuz_downloader:
+            msg = "Not authenticated with Qobuz"
+            raise RuntimeError(msg)
+
+        # 1) Resolve playlist
+        playlist = await self.qobuz_downloader.get_playlist_metadata(playlist_id)
+
+        # 2) Compute distinct album IDs from playlist track references.
+        album_ids = self._extract_album_ids_from_playlist(playlist)
+
+        # Fallback: if we couldn't derive album IDs from source_data, we will
+        # stream tracks' albums by fetching albums in the loop and dedup there.
+
+        # 3) Emit initial playlist metadata for UI setup
+        initial_result = MetadataResult(
+            content_type="playlist",
+            service=self.service_name,
+            data={
+                "content_type": "playlist",
+                "id": playlist_id,
+                "playlist_info": {
+                    "id": playlist_id,
+                    "name": playlist.name,
+                    "owner": playlist.info.owner,
+                    "total_items": len(album_ids)
+                    if album_ids
+                    else playlist.info.total_tracks,
+                    "remaining_items": len(album_ids)
+                    if album_ids
+                    else playlist.info.total_tracks,
+                    "artwork_thumbnail": None,
+                },
+                "items": [],
+                "album_ids": album_ids,
+            },
+            raw_models={
+                "playlist": playlist,
+            },
+        )
+
+        # 4) Stream albums if a callback is provided
+        if album_callback:
+            ids_to_fetch = album_ids
+            if not ids_to_fetch:
+                # No precomputed album ids; derive by resolving track -> album
+                # Resolve sequentially but skip duplicates
+                id_seen: set[str] = set()
+                ids_to_fetch = []
+                for pt in playlist.tracks:
+                    try:
+                        track = await self.qobuz_downloader.get_track_metadata(
+                            pt.track_id
+                        )
+                        if track.album_id and track.album_id not in id_seen:
+                            id_seen.add(track.album_id)
+                            ids_to_fetch.append(track.album_id)
+                    except Exception:
+                        logger.exception(
+                            "Failed to resolve track %s for album id", pt.track_id
+                        )
+                        continue
+
+            # Initialize counter if provided
+            if counter_init_callback:
+                counter_init_callback(len(ids_to_fetch), self.service_name)
+
+            # Reuse album fetcher to stream albums progressively
+            await self._fetch_albums_async(ids_to_fetch, album_callback)
+
+        return initial_result
+
+    def _extract_album_ids_from_playlist(self, playlist) -> list[str]:
+        """Extract distinct album IDs from a playlist's tracks.
+
+        Tries multiple strategies to remain resilient if upstream structures change:
+        - Prefer attribute `album_id` on `PlaylistTrack` (when downloader injected it)
+        - Fall back to inspecting any raw metadata present
+        Returns a list preserving order, without duplicates.
+        """
+        seen: set[str] = set()
+        album_ids: list[str] = []
+        for track in playlist.tracks:
+            album_id = getattr(track, "album_id", None)
+            if not album_id and hasattr(track, "raw_metadata"):
+                raw = track.raw_metadata or {}
+                if isinstance(raw, dict):
+                    candidate = raw.get("album_id")
+                    album_id = str(candidate) if candidate is not None else None
+            if album_id and album_id not in seen:
+                seen.add(album_id)
+                album_ids.append(album_id)
+        return album_ids
+
     async def cleanup(self) -> None:
         """Clean up resources."""
         if hasattr(self, "session_manager"):
