@@ -20,8 +20,7 @@ class MetadataProviderFactory:
     _providers: ClassVar[dict[StreamingSource, type[BaseMetadataProvider]]] = {
         StreamingSource.QOBUZ: QobuzMetadataProvider,
         StreamingSource.YOUTUBE: YouTubeMetadataProvider,
-        # TODO: Note: Deezer and Tidal are not yet fully implemented
-        # StreamingSource.DEEZER: DeezerMetadataProvider,
+        # StreamingSource.DEEZER: DeezerMetadataProvider,  # Enable when Deezer is fully supported in UI/tests
         # StreamingSource.TIDAL: TidalMetadataProvider,
     }
 
