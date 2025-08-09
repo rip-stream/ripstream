@@ -270,15 +270,21 @@ class QobuzDownloader(BaseDownloader):
             "covers": covers,
         }
 
-        # Extract album IDs if available
-        album_ids = []
+        # Extract album IDs and raw album items if available
+        album_ids: list[str] = []
+        albums_items: list[dict] = []
         if qobuz_artist.albums and "items" in qobuz_artist.albums:
-            album_ids = [str(album["id"]) for album in qobuz_artist.albums["items"]]
+            albums_items = qobuz_artist.albums["items"] or []
+            album_ids = [
+                str(album.get("id"))
+                for album in albums_items
+                if album.get("id") is not None
+            ]
 
         return Artist.from_source_data(
             source=StreamingSource.QOBUZ,
             artist_id=artist_id,
-            data={**artist_data, "album_ids": album_ids},
+            data={**artist_data, "album_ids": album_ids, "albums_items": albums_items},
         )
 
     async def search(

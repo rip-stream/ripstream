@@ -30,6 +30,8 @@ class QobuzMetadataProvider(BaseMetadataProvider):
         self.qobuz_downloader: QobuzDownloader | None = None
         # Cache for albums prefetched during streaming filtering to avoid refetch
         self._prefetched_albums: dict[str, Any] = {}
+        # Map of album_id -> raw album item for lightweight streaming
+        self._raw_album_items_map: dict[str, dict] = {}
 
     @property
     def service_name(self) -> str:
@@ -149,12 +151,36 @@ class QobuzMetadataProvider(BaseMetadataProvider):
         # Get artist thumbnail
         thumbnail = artist.covers.get_best_image([CoverSize.SMALL, CoverSize.MEDIUM])
 
-        # Pre-filter album IDs using lightweight album info fetch with caching
-        filtered_album_ids = (
-            await self._prefilter_album_ids(artist.album_ids)
-            if album_callback
-            else artist.album_ids
-        )
+        # Pre-filter album IDs using album list returned with artist response to avoid network calls
+        filtered_album_ids = artist.album_ids
+        if album_callback and hasattr(artist, "stats"):
+            try:
+                raw = artist.stats.get_metadata("source_data", {})
+                raw_albums: list[dict] = (
+                    raw.get("albums_items", []) if isinstance(raw, dict) else []
+                )
+                if raw_albums:
+                    id_to_tracks = {
+                        str(item.get("id")): int(item.get("tracks_count", 0) or 0)
+                        for item in raw_albums
+                        if item.get("id") is not None
+                    }
+                    if self.artist_item_filter != ArtistItemFilter.BOTH:
+                        only_singles = (
+                            self.artist_item_filter == ArtistItemFilter.SINGLES_ONLY
+                        )
+                        filtered_album_ids = [
+                            aid
+                            for aid in artist.album_ids
+                            if (
+                                (id_to_tracks.get(aid, 0) <= 3)
+                                if only_singles
+                                else (id_to_tracks.get(aid, 0) > 3)
+                            )
+                        ]
+            except (AttributeError, KeyError, TypeError):
+                # If structure unexpected, fall back to original list
+                filtered_album_ids = artist.album_ids
 
         # Return initial artist info immediately reflecting filtered list
         initial_result = MetadataResult(
@@ -189,17 +215,52 @@ class QobuzMetadataProvider(BaseMetadataProvider):
             if counter_init_callback:
                 counter_init_callback(len(filtered_album_ids), self.service_name)
 
-            # Fetch albums in the same async context to ensure proper cleanup
+            # Build map of album_id -> raw album item for lightweight streaming
+            id_to_raw: dict[str, dict] = {}
+            try:
+                raw = artist.stats.get_metadata("source_data", {})
+                raw_albums: list[dict] = (
+                    raw.get("albums_items", []) if isinstance(raw, dict) else []
+                )
+                id_to_raw = {
+                    str(item.get("id")): item
+                    for item in raw_albums
+                    if item.get("id") is not None
+                }
+            except (AttributeError, KeyError, TypeError):
+                id_to_raw = {}
+            # Store map on instance so async fetch can use it without changing signature
+            self._raw_album_items_map = id_to_raw
+
+            # Fetch albums in the same async context; if raw is available, stream without per-album fetches
             await self._fetch_albums_async(filtered_album_ids, album_callback)
+
+            # Clear map after use
+            self._raw_album_items_map = {}
 
         return initial_result
 
     async def _fetch_albums_async(self, album_ids: list[str], album_callback):
-        """Fetch albums asynchronously and call callback for each one."""
+        """Fetch albums asynchronously and call callback for each one.
+
+        Uses any raw album map set on the instance to avoid refetching.
+        """
         for album_id in album_ids:
             try:
-                # Build album metadata; this call will reuse and pop any prefetched
-                # album model from the cache inside fetch_album_metadata
+                raw_map = getattr(self, "_raw_album_items_map", {}) or {}
+                if album_id in raw_map:
+                    # Emit lightweight album for immediate grid rendering
+                    album_item = self._build_lightweight_album_data(raw_map[album_id])
+                    if album_callback:
+                        album_callback(album_item)
+
+                    # Immediately fetch full album details (tracks) to populate list view
+                    full_album = await self.fetch_album_metadata(album_id)
+                    if album_callback:
+                        album_callback(full_album.data)
+                    # Continue to next album
+                    continue
+                # Build album metadata; this call will fetch full details
                 album_metadata = await self.fetch_album_metadata(album_id)
                 album_item = album_metadata.data
 
@@ -213,38 +274,53 @@ class QobuzMetadataProvider(BaseMetadataProvider):
                 )
                 continue
 
-    async def _prefilter_album_ids(self, album_ids: list[str]) -> list[str]:
-        """Filter album IDs before streaming based on artist_item_filter.
+    def _build_lightweight_album_data(self, raw: dict) -> dict:
+        """Construct minimal album data dict from raw artist albums item."""
+        album_id = str(raw.get("id", ""))
+        title = raw.get("title") or "Unknown Album"
+        artist_name = None
+        artist_info = raw.get("artist")
+        if isinstance(artist_info, dict):
+            artist_name = artist_info.get("name")
+        year = None
+        try:
+            date_str = raw.get("release_date_original")
+            if date_str and isinstance(date_str, str):
+                year = int(date_str.split("-")[0])
+        except (ValueError, AttributeError, TypeError):
+            year = None
+        tracks_count = int(raw.get("tracks_count", 0) or 0)
+        duration_seconds = int(raw.get("duration", 0) or 0)
+        image = raw.get("image") or {}
+        artwork_url = None
+        if isinstance(image, dict):
+            artwork_url = (
+                image.get("small") or image.get("thumbnail") or image.get("large")
+            )
 
-        Caches lightweight album models to avoid re-fetching later.
-        """
-        # No filtering required
-        if (
-            self.artist_item_filter == ArtistItemFilter.BOTH
-            or not self.qobuz_downloader
-        ):
-            return album_ids
+        album_info = {
+            "id": album_id,
+            "title": title,
+            "artist": artist_name or "Unknown Artist",
+            "year": year,
+            "total_tracks": tracks_count,
+            "total_duration": duration_seconds,
+            "hires": bool(raw.get("hires")),
+            "is_explicit": bool(raw.get("parental_warning")),
+            "quality": "Mixed",
+            "artwork_thumbnail": artwork_url,
+            "track_count": tracks_count,
+        }
 
-        filtered: list[str] = []
-        for album_id in album_ids:
-            try:
-                album = await self.qobuz_downloader.get_album_metadata(album_id)
-                # Cache prefetched album model for potential reuse
-                self._prefetched_albums[album_id] = album
-                total_tracks = album.info.total_tracks or 0
-                is_single = total_tracks <= 3
-                if (
-                    self.artist_item_filter == ArtistItemFilter.ALBUMS_ONLY
-                    and not is_single
-                ) or (
-                    self.artist_item_filter == ArtistItemFilter.SINGLES_ONLY
-                    and is_single
-                ):
-                    filtered.append(album_id)
-            except Exception:
-                logger.exception("Failed to pre-filter album %s", album_id)
-                continue
-        return filtered
+        return {
+            "content_type": "album",
+            "service": self.streaming_source.value,
+            "id": album_id,
+            "album_info": album_info,
+            "items": [],
+        }
+
+    # Prefiltering now uses artist response's albums list; network-based prefetch removed
 
     async def fetch_album_metadata(self, album_id: str) -> MetadataResult:
         """Fetch album metadata including all tracks."""

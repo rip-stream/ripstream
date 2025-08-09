@@ -113,6 +113,11 @@ class MainWindow(QMainWindow):
         if discography_view:
             discography_view.item_selected.connect(self.handle_item_selection)
             discography_view.download_requested.connect(self.handle_download_request)
+            # Listen for lazy album details requests from list view
+            if hasattr(discography_view, "list_view") and discography_view.list_view:
+                discography_view.list_view.album_details_requested.connect(
+                    self.handle_album_details_request
+                )
 
     def _connect_downloads_signals(self):
         """Connect downloads view signals to handlers."""
@@ -285,6 +290,35 @@ class MainWindow(QMainWindow):
     def handle_item_selection(self, item_id: str):
         """Handle item selection in discography view."""
         self.ui_manager.update_status(f"Selected item: {item_id}")
+
+    def handle_album_details_request(self, album_id: str):
+        """Fetch full album details lazily when an album row is selected in the list view."""
+        self.ui_manager.update_status(f"Loading album details: {album_id}")
+
+        # Build a ParsedURL-like object to reuse metadata service
+        from ripstream.core.url_parser import ParsedURL
+        from ripstream.downloader.enums import ContentType
+        from ripstream.models.enums import StreamingSource
+
+        # Determine current service from last parsed URL if available, fallback to qobuz
+        service = StreamingSource.QOBUZ
+        if (
+            hasattr(self, "metadata_service")
+            and self.metadata_service.current_fetcher
+            and hasattr(self.metadata_service.current_fetcher, "parsed_url")
+        ):
+            service = self.metadata_service.current_fetcher.parsed_url.service
+
+        parsed = ParsedURL(
+            service=service,
+            content_type=ContentType.ALBUM,
+            content_id=album_id,
+            url=f"{service.value}://album/{album_id}",
+            metadata={},
+        )
+
+        # Fire a one-off metadata fetch for album details; UI will merge on metadata_ready
+        self.metadata_service.fetch_metadata(parsed)
 
     def handle_download_request(self, item_details: dict):
         """Handle download request for an item."""

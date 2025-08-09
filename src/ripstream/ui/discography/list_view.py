@@ -85,6 +85,7 @@ class DiscographyListView(QTableWidget):
 
     item_selected = pyqtSignal(str)  # item_id
     download_requested = pyqtSignal(dict)  # item_details
+    album_details_requested = pyqtSignal(str)  # album_id for lazy track loading
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -244,6 +245,14 @@ class DiscographyListView(QTableWidget):
                 item_id = title_item.data(Qt.ItemDataRole.UserRole)
                 if item_id:
                     self.item_selected.emit(item_id)
+                    # If the selected row represents an album (no track_number), request lazy load
+                    item_data = title_item.data(Qt.ItemDataRole.UserRole + 1) or {}
+                    if (
+                        isinstance(item_data, dict)
+                        and item_data.get("type", "Album") == "Album"
+                        and not item_data.get("track_number")
+                    ):
+                        self.album_details_requested.emit(item_id)
 
     def _extract_row_data(self, row: int) -> dict[str, Any]:
         """Extract data from a table row."""

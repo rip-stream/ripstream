@@ -186,10 +186,20 @@ class DiscographyView(QWidget):
         """Add album content - single album in grid view, individual tracks in list view."""
         album_id = album_info.get("id", "")
 
-        # Only add album to grid view if we have tracks or meaningful album info
-        # Don't add empty albums to grid view
-        if tracks or (
-            album_info and any(album_info.get(key) for key in ["id", "title", "artist"])
+        # Only add album to grid view if it's not already present
+        grid_has_album = False
+        items_attr = getattr(self.grid_view, "items", [])
+        for widget in items_attr:
+            if hasattr(widget, "item_id") and widget.item_id == album_id:
+                grid_has_album = True
+                break
+
+        if not grid_has_album and (
+            tracks
+            or (
+                album_info
+                and any(album_info.get(key) for key in ["id", "title", "artist"])
+            )
         ):
             # For grid view, add the album as a single item
             album_item = {
@@ -210,6 +220,10 @@ class DiscographyView(QWidget):
             self.grid_view.add_item(album_item, self.pending_artwork)
 
             # Track if artwork was consumed for the album
+            if album_id in self.pending_artwork:
+                self._consumed_artwork_ids.add(album_id)
+        else:
+            # Even if we didn't add to grid (already present), mark artwork as consumed if pending
             if album_id in self.pending_artwork:
                 self._consumed_artwork_ids.add(album_id)
 
