@@ -419,6 +419,23 @@ class MainWindow(QMainWindow):
             elif content_type == "artist" and "artist_info" in metadata:
                 msg = f"Loaded {metadata['artist_info']['total_items']} items by '{metadata['artist_info']['name']}' from {service}"
                 self.ui_manager.update_status(msg)
+            elif content_type == "playlist" and "playlist_info" in metadata:
+                # For playlists we stream albums progressively; items may be empty here
+                pl_info = metadata["playlist_info"]
+                name = pl_info.get("name", "Playlist")
+                # Prefer album_ids count if present, otherwise use total_items/tracks
+                album_ids = metadata.get("album_ids") or []
+                total = (
+                    len(album_ids)
+                    if isinstance(album_ids, list)
+                    else pl_info.get("total_items")
+                    or pl_info.get("track_count")
+                    or pl_info.get("total_tracks")
+                    or 0
+                )
+                self.ui_manager.update_status(
+                    f"Loading playlist '{name}' with {total} album(s) from {service}"
+                )
             else:
                 self.ui_manager.update_status(
                     f"Loaded {len(items)} {content_type}(s) from {service}"

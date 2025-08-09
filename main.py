@@ -3,15 +3,12 @@
 
 """Main entry point for the ripstream application."""
 
-import logging
 import sys
 
 from PyQt6.QtWidgets import QApplication
 
 from ripstream.ui.main_window import MainWindow
 from ripstream.ui.resources import get_application_icon
-
-logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.DEBUG)
 
 
 def main() -> None:
