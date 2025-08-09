@@ -96,6 +96,50 @@ class AlbumArtGridView(QScrollArea):
                 self._current_downloaded_albums
             )
 
+    def sort_items(self, sort_by: str):
+        """Sort grid items in-place and refresh layout.
+
+        Supported sort keys: "title", "artist", "year" (ascending).
+        """
+        if not self.items:
+            return
+
+        def normalize_text(value: Any) -> str:
+            if value is None:
+                return ""
+            return str(value).lower()
+
+        def normalize_year(value: Any) -> int:
+            try:
+                # Some sources provide year as str or may be empty/"-"
+                if value in (None, "", "-"):
+                    return 0
+                return int(value)
+            except (ValueError, TypeError):
+                return 0
+
+        def item_key(widget: AlbumArtWidget):  # type: ignore[name-defined]
+            data = getattr(widget, "item_data", {}) or {}
+            if sort_by == "artist":
+                return (
+                    normalize_text(data.get("artist", "")),
+                    normalize_text(data.get("title", "")),
+                )
+            if sort_by == "year":
+                return (
+                    normalize_year(data.get("year")),
+                    normalize_text(data.get("title", "")),
+                )
+            # Default to title
+            return (
+                normalize_text(data.get("title", "")),
+                normalize_text(data.get("artist", "")),
+            )
+
+        # Reorder widgets and refresh positions
+        self.items.sort(key=item_key)
+        self.update_grid_layout()
+
     def update_item_artwork(self, item_id: str, pixmap: QPixmap):
         """Update artwork for a specific item."""
         # Try to find and update the item immediately

@@ -330,7 +330,16 @@ class DiscographyView(QWidget):
 
     def sort_items(self, sort_by: str):
         """Sort items by the specified criteria."""
-        # This would implement sorting logic
+        # Delegate sorting to both views so switching views preserves order
+        if hasattr(self, "grid_view") and self.grid_view:
+            sort_func = getattr(self.grid_view, "sort_items", None)
+            if callable(sort_func):
+                sort_func(sort_by)
+
+        if hasattr(self, "list_view") and self.list_view:
+            sort_func = getattr(self.list_view, "sort_items", None)
+            if callable(sort_func):
+                sort_func(sort_by)
 
     def set_loading_state(self, loading: bool):
         """Set loading state for the view."""

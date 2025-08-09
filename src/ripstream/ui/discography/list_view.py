@@ -218,6 +218,18 @@ class DiscographyListView(QTableWidget):
                 row, item_data, self._current_downloaded_albums
             )
 
+    def sort_items(self, sort_by: str):
+        """Sort table rows by logical field mapping.
+
+        Supported keys: "title" -> col 0, "artist" -> col 1, "year" -> col 3.
+        """
+        column_map = {"title": 0, "artist": 1, "year": 3}
+        column_index = column_map.get(sort_by, 0)
+        # Default ascending order
+        from PyQt6.QtCore import Qt
+
+        self.sortItems(column_index, Qt.SortOrder.AscendingOrder)
+
     def create_actions_widget(self, item_data: dict[str, Any]) -> QWidget:
         """Create action buttons for an item."""
         widget = QWidget()
