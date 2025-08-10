@@ -36,16 +36,25 @@ class DeezerMetadataProvider(BaseMetadataProvider):
         return StreamingSource.DEEZER
 
     async def authenticate(self) -> bool:
-        """Authenticate with Deezer by instantiating `deezer.Client` directly."""
+        """Authenticate with Deezer using deezer.Client and optional ARL cookie.
+
+        If `credentials` contains an `arl`, set it on the client's cookie jar to
+        enable account-scoped endpoints where applicable.
+        """
         try:
             if self.client is None:
                 self.client = deezer.Client()
+            # Apply ARL cookie if provided
+            arl = (self.credentials or {}).get("arl")
+            if isinstance(arl, str) and arl:
+                cookies = getattr(self.client, "cookies", None)
+                if hasattr(cookies, "update"):
+                    cookies.update({"arl": arl})
         except Exception:
             logger.exception("Failed to instantiate deezer.Client")
             self._authenticated = False
             return False
         else:
-            # Metadata endpoints are public; mark as authenticated for provider use
             self._authenticated = True
             return True
 
