@@ -9,6 +9,7 @@ from typing import Any, ClassVar
 from ripstream.downloader.config import DownloaderConfig
 from ripstream.downloader.progress import ProgressTracker
 from ripstream.downloader.providers.base import BaseDownloadProvider
+from ripstream.downloader.providers.deezer import DeezerDownloadProvider
 from ripstream.downloader.providers.qobuz import QobuzDownloadProvider
 from ripstream.downloader.session import SessionManager
 from ripstream.models.enums import StreamingSource
@@ -21,9 +22,9 @@ class DownloadProviderFactory:
 
     _providers: ClassVar[dict[StreamingSource, type[BaseDownloadProvider]]] = {
         StreamingSource.QOBUZ: QobuzDownloadProvider,
+        StreamingSource.DEEZER: DeezerDownloadProvider,
         # TODO: Add other providers as they are implemented
         # StreamingSource.TIDAL: TidalDownloadProvider,
-        # StreamingSource.DEEZER: DeezerDownloadProvider,
         # StreamingSource.YOUTUBE: YouTubeDownloadProvider,
     }
 

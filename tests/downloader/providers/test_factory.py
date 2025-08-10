@@ -69,10 +69,11 @@ class TestDownloadProviderFactory:
         services = DownloadProviderFactory.get_supported_services()
 
         assert isinstance(services, list)
+        # Qobuz and Deezer should be supported
         assert StreamingSource.QOBUZ in services
+        assert StreamingSource.DEEZER in services
         # Should not include services that are commented out in the factory
         assert StreamingSource.TIDAL not in services
-        assert StreamingSource.DEEZER not in services
         assert StreamingSource.YOUTUBE not in services
 
     @pytest.mark.parametrize(
@@ -80,7 +81,7 @@ class TestDownloadProviderFactory:
         [
             (StreamingSource.QOBUZ, True),
             (StreamingSource.TIDAL, False),
-            (StreamingSource.DEEZER, False),
+            (StreamingSource.DEEZER, True),
             (StreamingSource.YOUTUBE, False),
             (StreamingSource.SPOTIFY, False),
             (StreamingSource.UNKNOWN, False),
@@ -129,7 +130,6 @@ class TestDownloadProviderFactory:
         "unsupported_service",
         [
             StreamingSource.TIDAL,
-            StreamingSource.DEEZER,
             StreamingSource.YOUTUBE,
             StreamingSource.SPOTIFY,
             StreamingSource.UNKNOWN,
