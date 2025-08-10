@@ -9,6 +9,7 @@ import qtawesome as qta
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -373,9 +374,22 @@ class DownloadsHistoryView(QWidget):
         self.clear_all_btn.setIcon(qta.icon("fa5s.trash"))
         self.clear_all_btn.clicked.connect(self.clear_all_downloads_clicked)
 
+        # Vertical separator between Clear All and Retry All
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+
+        # Retry All button
+        self.retry_all_btn = QPushButton("Retry All")
+        # Use a redo icon
+        self.retry_all_btn.setIcon(qta.icon("fa5s.redo"))
+        self.retry_all_btn.clicked.connect(self.retry_all_downloads_clicked)
+
         controls_layout.addWidget(self.refresh_btn)
         controls_layout.addWidget(self.clear_completed_btn)
         controls_layout.addWidget(self.clear_all_btn)
+        controls_layout.addWidget(separator)
+        controls_layout.addWidget(self.retry_all_btn)
         controls_layout.addStretch()
 
         layout.addLayout(controls_layout)
@@ -746,3 +760,18 @@ class DownloadsHistoryView(QWidget):
 
             logger = logging.getLogger(__name__)
             logger.exception("Failed to clear all downloads")
+
+    def retry_all_downloads_clicked(self):
+        """Retry all failed downloads and refresh the view."""
+        try:
+            retried = self.download_service.retry_failed_downloads()
+            # Refresh UI if any were reset
+            if retried is not None:
+                self.load_downloads()
+                self.update_stats()
+                self._emit_active_albums_update()
+        except Exception:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.exception("Failed to retry all downloads")
