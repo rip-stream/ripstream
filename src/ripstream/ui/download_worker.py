@@ -5,6 +5,7 @@
 
 import asyncio
 import logging
+from contextlib import suppress
 from pathlib import Path
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, Any
@@ -31,6 +32,7 @@ class DownloadWorker(QThread):
 
     download_started = pyqtSignal(str, dict)  # download_id, item_details
     download_progress = pyqtSignal(str, int)  # download_id, progress_percentage
+    download_speed = pyqtSignal(str, float)  # download_id, bytes_per_second
     download_completed = pyqtSignal(str, bool, str)  # download_id, success, message
     download_error = pyqtSignal(str, str)  # download_id, error_message
     progress_check_requested = (
@@ -315,6 +317,22 @@ class DownloadWorker(QThread):
                 self.download_progress.emit(self._current_download_id, current_progress)
                 self._last_known_progress = current_progress
 
+            # Emit raw instantaneous speed for aggregation at UI, throttle to reduce UI load
+            now_ms = (
+                self.msecsSinceEpoch() if hasattr(self, "msecsSinceEpoch") else None
+            )
+            last_ms = getattr(self, "_last_speed_emit_ms", None)
+            should_emit = last_ms is None
+            if now_ms is not None:
+                should_emit = should_emit or (now_ms - (last_ms or 0) >= 500)
+            if should_emit:
+                with suppress(Exception):
+                    self.download_speed.emit(
+                        self._current_download_id, float(progress.bytes_per_second)
+                    )
+                if now_ms is not None:
+                    self._last_speed_emit_ms = now_ms
+
             # If completed, clean up progress tracking
             if progress.is_complete:
                 self._cleanup_progress_tracking()
@@ -383,6 +401,19 @@ class DownloadWorker(QThread):
         if current_progress != self._last_known_progress:
             self.download_progress.emit(self._current_download_id, current_progress)
             self._last_known_progress = current_progress
+        # Emit speed samples during checks, respecting throttle
+        now_ms = self.msecsSinceEpoch() if hasattr(self, "msecsSinceEpoch") else None
+        last_ms = getattr(self, "_last_speed_emit_ms", None)
+        should_emit = last_ms is None
+        if now_ms is not None:
+            should_emit = should_emit or (now_ms - (last_ms or 0) >= 500)
+        if should_emit:
+            with suppress(Exception):
+                self.download_speed.emit(
+                    self._current_download_id, float(progress.bytes_per_second)
+                )
+            if now_ms is not None:
+                self._last_speed_emit_ms = now_ms
 
     def _cleanup_progress_tracking(self):
         """Clean up progress tracking."""

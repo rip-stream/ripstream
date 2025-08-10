@@ -7,6 +7,7 @@ from typing import Any
 
 import qtawesome as qta
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QFont, QFontMetrics
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -20,6 +21,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from sqlalchemy.exc import SQLAlchemyError
 
 from ripstream.config.user import UserConfig
 from ripstream.models.download_service import DownloadService
@@ -52,14 +54,33 @@ class DownloadStatsWidget(QWidget):
         self.completed_group = self.create_stat_group("Completed", "0")
         self.failed_group = self.create_stat_group("Failed", "0")
         self.pending_group = self.create_stat_group("Pending", "0")
+        self.speed_group = self.create_stat_group("Average Speed", "0 Mbps")
 
         stats_layout.addWidget(self.total_group)
         stats_layout.addWidget(self.completed_group)
         stats_layout.addWidget(self.failed_group)
         stats_layout.addWidget(self.pending_group)
+        stats_layout.addWidget(self.speed_group)
         stats_layout.addStretch()
 
         layout.addWidget(stats_container)
+
+        # Configure speed label: fixed width (up to "9,999.9 Mbps") and right-aligned to prevent flicker
+        speed_label = self.speed_group.findChild(QLabel)
+        if speed_label:
+            font = QFont(speed_label.font())
+            font.setBold(True)
+            # Match the CSS font-size used in create_stat_group
+            font.setPixelSize(24)
+            speed_label.setFont(font)
+            metrics = QFontMetrics(font)
+            max_text = "9,999.9 Mbps"
+            fixed_width = metrics.horizontalAdvance(max_text) + 8  # small padding
+            speed_label.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            speed_label.setMinimumWidth(fixed_width)
+            speed_label.setMaximumWidth(fixed_width)
 
     def create_stat_group(self, title: str, value: str) -> QGroupBox:
         """Create a statistics group widget."""
@@ -80,7 +101,7 @@ class DownloadStatsWidget(QWidget):
         layout.addWidget(value_label)
         return group
 
-    def update_stats(self, stats: dict[str, int]):
+    def update_stats(self, stats: dict[str, Any]):
         """Update the statistics display."""
         # Update total
         total_label = self.total_group.findChild(QLabel)
@@ -102,9 +123,23 @@ class DownloadStatsWidget(QWidget):
         if pending_label:
             pending_label.setText(str(stats.get("pending", 0)))
 
+        # Update average speed text
+        speed_label = self.speed_group.findChild(QLabel)
+        if speed_label:
+            text = stats.get("average_speed_text")
+            if not isinstance(text, str):
+                text = "0 Mbps"
+            speed_label.setText(text)
+
     def reset_stats(self):
         """Reset all statistics to zero."""
-        self.update_stats({"total": 0, "completed": 0, "failed": 0, "pending": 0})
+        self.update_stats({
+            "total": 0,
+            "completed": 0,
+            "failed": 0,
+            "pending": 0,
+            "average_speed_text": "0 Mbps",
+        })
 
 
 class DownloadsTableWidget(QTableWidget):
@@ -257,7 +292,11 @@ class DownloadsTableWidget(QTableWidget):
         return widget
 
     def update_download_progress(
-        self, download_id: str, progress: int, status: DownloadStatus
+        self,
+        download_id: str,
+        progress: int,
+        status: DownloadStatus,
+        _speed_bps: float | None = None,
     ):
         """Update the progress of a specific download."""
         for row in range(self.rowCount()):
@@ -347,6 +386,9 @@ class DownloadsHistoryView(QWidget):
         super().__init__(parent)
         self.config = config or UserConfig()
         self.download_service = DownloadService(self.config)
+        self._speeds_bps: dict[str, float] = {}
+        # Map any external IDs provided by callers to the actual DB record IDs stored in the table
+        self._id_aliases: dict[str, str] = {}
         self.setup_ui()
         self.setup_timer()
         self.load_downloads()
@@ -384,6 +426,8 @@ class DownloadsHistoryView(QWidget):
         # Use a redo icon
         self.retry_all_btn.setIcon(qta.icon("fa5s.redo"))
         self.retry_all_btn.clicked.connect(self.retry_all_downloads_clicked)
+        # Disabled by default until we detect retryable items
+        self.retry_all_btn.setEnabled(False)
 
         controls_layout.addWidget(self.refresh_btn)
         controls_layout.addWidget(self.clear_completed_btn)
@@ -429,6 +473,7 @@ class DownloadsHistoryView(QWidget):
                     source = StreamingSource.QOBUZ
 
             # Add to database first
+            original_id = download_data.get("download_id")
             download_id = self.download_service.add_download_record(
                 title=download_data.get("title", "Unknown"),
                 artist=download_data.get("artist", "Unknown"),
@@ -444,6 +489,9 @@ class DownloadsHistoryView(QWidget):
             if download_id:
                 # Update the download data with the real ID
                 download_data["download_id"] = download_id
+                # Record alias mapping if an external ID was provided
+                if original_id and original_id != download_id:
+                    self._id_aliases[str(original_id)] = str(download_id)
                 self.downloads_table.add_download_item(download_data)
                 self.update_stats()
             else:
@@ -461,16 +509,27 @@ class DownloadsHistoryView(QWidget):
             self.update_stats()
 
     def update_download_progress(
-        self, download_id: str, progress: int, status: DownloadStatus | None = None
+        self,
+        download_id: str,
+        progress: int,
+        status: DownloadStatus | None = None,
+        speed_bps: float | None = None,
     ):
         """Update download progress."""
         try:
+            # Normalize caller-provided ID to internal DB ID if necessary
+            download_id = self._id_aliases.get(download_id, download_id)
             if status is None:
                 # If no status provided, use DOWNLOADING as default
                 status = DownloadStatus.DOWNLOADING
 
+            if speed_bps is not None:
+                self._speeds_bps[download_id] = max(0.0, float(speed_bps))
+
             # Update UI immediately (this is fast)
-            self.downloads_table.update_download_progress(download_id, progress, status)
+            self.downloads_table.update_download_progress(
+                download_id, progress, status, speed_bps
+            )
 
             # Only update database for significant progress changes or completion
             # This prevents UI hanging from frequent database writes
@@ -502,10 +561,24 @@ class DownloadsHistoryView(QWidget):
             logger = logging.getLogger(__name__)
             logger.exception("Failed to update download progress")
             # Still update UI even if database fails
-            self.downloads_table.update_download_progress(download_id, progress, status)
+            self.downloads_table.update_download_progress(
+                download_id, progress, status, speed_bps
+            )
             if progress % 10 == 0 or progress == 100:
                 self.update_stats()
                 self._emit_active_albums_update()
+
+    def update_download_speed(self, download_id: str, speed_bps: float) -> None:
+        """Lightweight updater for raw speed samples without triggering DB writes or heavy UI work."""
+        try:
+            normalized_id = self._id_aliases.get(download_id, download_id)
+            self._speeds_bps[normalized_id] = max(0.0, float(speed_bps))
+        except (TypeError, ValueError):
+            # Do not let bad input crash UI
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning("Invalid speed for %s", download_id, exc_info=True)
 
     def update_download_status(self, download_id: str, status: str):
         """Update download status."""
@@ -603,6 +676,16 @@ class DownloadsHistoryView(QWidget):
                     "Failed to remove download from database: %s", download_id
                 )
                 self.downloads_table.remove_download_item(download_id)
+            # Forget any stored speed for this download
+            self._speeds_bps.pop(download_id, None)
+            # Clean up aliases pointing to or from this ID
+            aliases_to_remove = [
+                k
+                for k, v in self._id_aliases.items()
+                if v == download_id or k == download_id
+            ]
+            for k in aliases_to_remove:
+                self._id_aliases.pop(k, None)
         except Exception:
             import logging
 
@@ -610,6 +693,14 @@ class DownloadsHistoryView(QWidget):
             logger.exception("Failed to remove download")
             # Still remove from UI even if database fails
             self.downloads_table.remove_download_item(download_id)
+            self._speeds_bps.pop(download_id, None)
+            aliases_to_remove = [
+                k
+                for k, v in self._id_aliases.items()
+                if v == download_id or k == download_id
+            ]
+            for k in aliases_to_remove:
+                self._id_aliases.pop(k, None)
 
         # Emit signal for external handling
         self.remove_download.emit(download_id)
@@ -620,7 +711,10 @@ class DownloadsHistoryView(QWidget):
         try:
             # Get statistics from the database
             stats = self.download_service.get_download_statistics()
+            stats["average_speed_text"] = self._format_average_active_speed()
             self.stats_widget.update_stats(stats)
+            # Enable/disable Retry All based on retryable failed items
+            self._update_retry_all_button_state()
         except Exception:
             import logging
 
@@ -628,7 +722,44 @@ class DownloadsHistoryView(QWidget):
             logger.exception("Failed to update statistics")
             # Fallback to table-based stats
             stats = self.downloads_table.get_download_stats()
+            stats["average_speed_text"] = self._format_average_active_speed()
             self.stats_widget.update_stats(stats)
+            # Even on fallback, attempt to update Retry All button state
+            self._update_retry_all_button_state()
+
+    def _format_average_active_speed(self) -> str:
+        """Compute and format the average speed of active items in kbps.
+
+        Active items are ones with progress strictly between 0 and 100.
+        Returns "0 kbps" when none.
+        """
+        speeds: list[float] = []
+        for row in range(self.downloads_table.rowCount()):
+            status_item = self.downloads_table.item(row, 4)
+            progress_item = self.downloads_table.item(row, 5)
+            if not status_item or not progress_item:
+                continue
+            try:
+                progress_val = int(str(progress_item.text()).replace("%", "").strip())
+            except (TypeError, ValueError):
+                progress_val = 0
+            if progress_val <= 0 or progress_val >= 100:
+                continue
+            download_id = status_item.data(Qt.ItemDataRole.UserRole)
+            if not download_id:
+                continue
+            speed = self._speeds_bps.get(str(download_id))
+            if speed is None:
+                continue
+            speeds.append(float(speed))
+
+        if not speeds:
+            return "0 Mbps"
+
+        avg_bps = sum(speeds) / len(speeds)
+        # Convert bytes per second to megabits per second (SI)
+        avg_mbps = (avg_bps * 8.0) / 1_000_000.0
+        return f"{avg_mbps:,.1f} Mbps"
 
     def refresh_downloads(self):
         """Refresh the downloads list."""
@@ -688,6 +819,7 @@ class DownloadsHistoryView(QWidget):
         try:
             # Clear existing items
             self.downloads_table.clear_all_downloads()
+            self._speeds_bps.clear()
 
             # Load recent downloads from database
             downloads = self.download_service.get_recent_downloads()
@@ -747,6 +879,7 @@ class DownloadsHistoryView(QWidget):
 
             # Clear the table
             self.downloads_table.clear_all_downloads()
+            self._speeds_bps.clear()
 
             # Emit signal for external handling
             self.clear_all_downloads.emit()
@@ -770,8 +903,18 @@ class DownloadsHistoryView(QWidget):
                 self.load_downloads()
                 self.update_stats()
                 self._emit_active_albums_update()
+                self._update_retry_all_button_state()
         except Exception:
             import logging
 
             logger = logging.getLogger(__name__)
             logger.exception("Failed to retry all downloads")
+
+    def _update_retry_all_button_state(self) -> None:
+        """Enable Retry All only when there are retryable failed downloads."""
+        try:
+            retryable_count = self.download_service.failed_downloads.count_retryable()
+            self.retry_all_btn.setEnabled(retryable_count > 0)
+        except (SQLAlchemyError, AttributeError):
+            # On error, keep it disabled to be safe
+            self.retry_all_btn.setEnabled(False)

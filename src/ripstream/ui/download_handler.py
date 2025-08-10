@@ -7,7 +7,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtWidgets import QMessageBox
 
 from ripstream.config.user import UserConfig
@@ -63,6 +63,8 @@ class DownloadHandler(QObject):
         worker.download_progress.connect(self._handle_download_progress)
         worker.download_completed.connect(self._handle_download_completed)
         worker.download_error.connect(self._handle_download_error)
+        # Connect raw speed updates so we can compute averages at the UI
+        worker.download_speed.connect(self._handle_download_speed)
 
     def handle_download_request(
         self, item_details: dict, existing_download_id: str | None = None
@@ -131,6 +133,29 @@ class DownloadHandler(QObject):
         self.downloads_view.update_download_progress(
             download_id, progress_percentage, DownloadStatus.DOWNLOADING
         )
+
+    def _handle_download_speed(self, download_id: str, speed_bps: float):
+        """Handle per-thread raw speed updates (bytes per second)."""
+        # Only update the raw speed; avoid DB writes and heavy UI work.
+        # The stats timer will refresh the average periodically.
+        self.downloads_view.update_download_speed(download_id, float(speed_bps))
+
+    def _get_current_progress(self, download_id: str) -> int:
+        """Read current progress for a download_id from the table to reuse on speed-only updates."""
+        table = self.downloads_view.downloads_table
+        for row in range(table.rowCount()):
+            status_item = table.item(row, 4)
+            if (
+                status_item
+                and status_item.data(Qt.ItemDataRole.UserRole) == download_id
+            ):
+                progress_item = table.item(row, 5)
+                if progress_item:
+                    try:
+                        return int(str(progress_item.text()).replace("%", "").strip())
+                    except ValueError:
+                        return 0
+        return 0
 
     def _handle_download_completed(self, download_id: str, success: bool, message: str):
         """Handle download completed signal."""

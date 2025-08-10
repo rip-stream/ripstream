@@ -18,6 +18,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ripstream.config.user import UserConfig
+from ripstream.models.enums import DownloadStatus
+from ripstream.ui.download_handler import DownloadHandler
 from ripstream.ui.downloads_view import DownloadsHistoryView, DownloadStatsWidget
 
 
@@ -144,6 +147,15 @@ class TestDownloadStatsWidget:
         label = group.findChild(QLabel)
         assert label is not None
         assert label.text() == "42"
+
+    def test_has_speed_group_and_initial_text(self, stats_widget: DownloadStatsWidget):
+        """Speed group should exist and start at 0 Mbps."""
+        assert hasattr(stats_widget, "speed_group")
+        assert stats_widget.speed_group.title() == "Average Speed"
+        speed_label = stats_widget.speed_group.findChild(QLabel)
+        assert speed_label is not None
+        # On construction, reset_stats() is called which sets average_speed_text
+        assert speed_label.text() == "0 Mbps"
 
 
 class TestDownloadsHistoryView:
@@ -583,6 +595,164 @@ class TestDownloadsHistoryView:
         first_title = downloads_view.downloads_table.item(0, 0).text()
         second_title = downloads_view.downloads_table.item(1, 0).text()
         assert first_title < second_title
+
+    def test_average_speed_zero_with_no_active(
+        self, downloads_view: DownloadsHistoryView
+    ):
+        """Average speed should be 0 Mbps when there are no active items."""
+        downloads_view.downloads_table.clear_all_downloads()
+
+        # Initially no items
+        downloads_view.update_stats()
+        speed_label: QLabel | None = downloads_view.stats_widget.speed_group.findChild(
+            QLabel
+        )
+        assert speed_label is not None
+        assert speed_label.text() == "0 Mbps"
+
+        # Add items at 0% and 100%
+        items = [
+            {
+                "download_id": "noactive_0",
+                "title": "T0",
+                "artist": "A",
+                "album": "Al",
+                "type": "Track",
+                "media_type": "TRACK",
+                "source": "QOBUZ",
+                "source_id": "x0",
+                "status": "pending",
+                "progress": 0,
+                "started_at": datetime.now(UTC),
+            },
+            {
+                "download_id": "noactive_100",
+                "title": "T1",
+                "artist": "A",
+                "album": "Al",
+                "type": "Track",
+                "media_type": "TRACK",
+                "source": "QOBUZ",
+                "source_id": "x1",
+                "status": "completed",
+                "progress": 100,
+                "started_at": datetime.now(UTC),
+            },
+        ]
+
+        for it in items:
+            downloads_view.add_download(it)
+
+        downloads_view.update_stats()
+        speed_label = downloads_view.stats_widget.speed_group.findChild(QLabel)
+        assert speed_label is not None
+        assert speed_label.text() == "0 Mbps"
+
+    @pytest.mark.parametrize(
+        ("entries", "expected_text"),
+        [
+            # Single active download: 125000 B/s -> 1.0 Mbps
+            (
+                [
+                    {"id": "a1", "progress": 50, "speed_bps": 125000.0},
+                ],
+                "1.0 Mbps",
+            ),
+            # Multiple actives: (125000 + 250000)/2 B/s = 187500 B/s -> 1.5 Mbps
+            (
+                [
+                    {"id": "a1", "progress": 30, "speed_bps": 125000.0},
+                    {"id": "a2", "progress": 60, "speed_bps": 250000.0},
+                ],
+                "1.5 Mbps",
+            ),
+            # Mix with non-active: only the 50% one counts
+            (
+                [
+                    {"id": "a1", "progress": 0, "speed_bps": 999999.0},
+                    {"id": "a2", "progress": 50, "speed_bps": 100000.0},
+                    {"id": "a3", "progress": 100, "speed_bps": 999999.0},
+                ],
+                "0.8 Mbps",
+            ),
+        ],
+    )
+    def test_average_speed_computation(
+        self,
+        downloads_view: DownloadsHistoryView,
+        entries: list[dict[str, float | int | str]],
+        expected_text: str,
+    ) -> None:
+        """Average speed is computed from active items and shown in the stats widget."""
+
+        downloads_view.downloads_table.clear_all_downloads()
+
+        # Add rows to the table and set progress and speed
+        for idx, entry in enumerate(entries):
+            download_id = f"{entry['id']}"
+            downloads_view.add_download({
+                "download_id": download_id,
+                "title": f"Track {idx}",
+                "artist": "Artist",
+                "album": "Album",
+                "type": "Track",
+                "media_type": "TRACK",
+                "source": "QOBUZ",
+                "source_id": f"src_{idx}",
+                "status": "downloading"
+                if int(entry["progress"]) < 100
+                else "completed",
+                "progress": int(entry["progress"]),
+                "started_at": datetime.now(UTC),
+            })
+
+            # Feed raw speed into the view through the standard update path
+            downloads_view.update_download_progress(
+                download_id,
+                int(entry["progress"]),
+                DownloadStatus.DOWNLOADING,
+                float(entry["speed_bps"]),
+            )
+
+        # Trigger stats calculation
+        downloads_view.update_stats()
+
+        speed_label: QLabel | None = downloads_view.stats_widget.speed_group.findChild(
+            QLabel
+        )
+        assert speed_label is not None
+        assert speed_label.text() == expected_text
+
+    def test_handler_forwards_speed_to_view(self, qapp, mock_download_service):
+        """DownloadHandler should forward raw speed to the view for aggregation."""
+        view = DownloadsHistoryView()
+        # Prepare a status label and handler
+        handler = DownloadHandler(UserConfig(), view, QLabel(""))
+
+        # Add a download and set some progress in the table so handler can read it back
+        download_id = "speed_forward_test"
+        view.add_download({
+            "download_id": download_id,
+            "title": "Test",
+            "artist": "A",
+            "album": "Al",
+            "type": "Track",
+            "media_type": "TRACK",
+            "source": "QOBUZ",
+            "source_id": "src",
+            "status": "downloading",
+            "progress": 40,
+            "started_at": datetime.now(UTC),
+        })
+
+        # Simulate worker speed signal
+        handler._handle_download_speed(download_id, 125000.0)
+
+        # Stats should now reflect the speed from this single active item: 1.0 Mbps
+        view.update_stats()
+        speed_label: QLabel | None = view.stats_widget.speed_group.findChild(QLabel)
+        assert speed_label is not None
+        assert speed_label.text() == "1.0 Mbps"
 
     def test_empty_downloads_handling(self, downloads_view):
         """Test handling of empty downloads list."""
