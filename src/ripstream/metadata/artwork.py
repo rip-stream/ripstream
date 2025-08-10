@@ -25,6 +25,10 @@ _failed_cleanup_dirs: set[str] = set()
 # Global semaphores to prevent concurrent artwork downloads per album/folder
 # Keyed by (event_loop_id, folder_path) to avoid reusing semaphores across loops
 _artwork_download_semaphores: dict[tuple[int, str], asyncio.Semaphore] = {}
+# Singleflight tasks to deduplicate concurrent artwork downloads per loop/folder
+_artwork_singleflight_tasks: dict[
+    tuple[int, str], asyncio.Task[tuple[str | None, str | None]]
+] = {}
 
 
 class AsyncFileLock:
@@ -62,6 +66,35 @@ class AsyncFileLock:
             with contextlib.suppress(OSError):
                 self.lock_dir.rmdir()
         return False
+
+
+def _ensure_directory(path: Path) -> Path | None:
+    """Ensure a directory exists at the given path.
+
+    If a non-directory file exists at the path, rename it out of the way and create the directory.
+    On failure, attempt a fallback unique subdirectory under the same parent and return that.
+
+    Returns the directory `Path` that exists and is usable, or None if creation failed.
+    """
+    try:
+        if path.exists() and not path.is_dir():
+            # Move conflicting file aside with a unique suffix
+            backup = path.with_name(path.name + f".file.{uuid4().hex[:8]}")
+            with contextlib.suppress(OSError):
+                path.rename(backup)
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        # Fallback to a unique temp subdirectory inside the parent
+        fallback = path.parent / f"{path.name}_{uuid4().hex[:8]}"
+        try:
+            fallback.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            logger.warning("Failed to create artwork directory %s: %s", path, e)
+            return None
+        else:
+            return fallback
+    else:
+        return path
 
 
 def _normalize_folder_path(folder_path: str) -> str:
@@ -189,6 +222,41 @@ def cleanup_artwork_semaphores() -> None:
         _artwork_download_semaphores.pop(key, None)
 
 
+async def download_artwork_singleflight(
+    session: aiohttp.ClientSession,
+    folder: str,
+    artwork_urls: dict[str, str],
+    config: dict[str, Any],
+    for_playlist: bool = False,
+) -> tuple[str | None, str | None]:
+    """Deduplicate concurrent artwork downloads to the same folder within a loop.
+
+    Ensures that concurrent callers awaiting artwork for the same album folder share
+    a single underlying task, avoiding redundant network and filesystem work.
+    """
+    await asyncio.sleep(0)
+    loop = asyncio.get_running_loop()
+    key = (id(loop), _normalize_folder_path(folder))
+
+    existing_task = _artwork_singleflight_tasks.get(key)
+    if existing_task and not existing_task.done():
+        return await existing_task
+
+    async def _runner() -> tuple[str | None, str | None]:
+        return await download_artwork(
+            session, folder, artwork_urls, config, for_playlist
+        )
+
+    task: asyncio.Task[tuple[str | None, str | None]] = asyncio.create_task(_runner())
+    _artwork_singleflight_tasks[key] = task
+
+    def _cleanup(_t: asyncio.Task) -> None:
+        _artwork_singleflight_tasks.pop(key, None)
+
+    task.add_done_callback(_cleanup)
+    return await task
+
+
 def _prepare_saved_artwork(
     folder: str, artwork_urls: dict[str, str]
 ) -> tuple[str | None, Any | None]:
@@ -209,14 +277,13 @@ def _prepare_embed_artwork(
     if not embed_url:
         return None, None
 
-    # Create temporary directory for embedded artwork
-    embed_dir = str(Path(folder) / "__artwork")
-    try:
-        Path(embed_dir).mkdir(parents=True, exist_ok=True)
-        add_artwork_tempdir(embed_dir)
-    except OSError:
-        logger.exception("Failed to create artwork directory %s", embed_dir)
+    # Create temporary directory for embedded artwork, robustly handling conflicts
+    requested_dir = Path(folder) / "__artwork"
+    ensured_dir = _ensure_directory(requested_dir)
+    if ensured_dir is None:
         return None, None
+    embed_dir = str(ensured_dir)
+    add_artwork_tempdir(embed_dir)
 
     # Use a more consistent hash generation approach using SHA-256 (more secure than MD5)
     url_hash = hashlib.sha256(embed_url.encode("utf-8")).hexdigest()[:16]

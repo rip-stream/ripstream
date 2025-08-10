@@ -657,9 +657,7 @@ class QobuzDownloader(BaseDownloader):
             try:
                 from ripstream.metadata.artwork import (
                     build_artwork_config,
-                )
-                from ripstream.metadata.artwork import (
-                    download_artwork as prefetch_download_artwork,
+                    download_artwork_singleflight,
                 )
 
                 # Build artwork config from source settings
@@ -674,7 +672,7 @@ class QobuzDownloader(BaseDownloader):
                 artwork_urls = self._extract_artwork_urls(album_info_for_art)
                 # Only prefetch if we have URLs
                 if artwork_urls:
-                    await prefetch_download_artwork(
+                    await download_artwork_singleflight(
                         session,
                         str(album_path),
                         artwork_urls,
@@ -1156,7 +1154,7 @@ class QobuzDownloader(BaseDownloader):
                 return None
 
             # Download artwork using our artwork module
-            from ripstream.metadata.artwork import download_artwork
+            from ripstream.metadata.artwork import download_artwork_singleflight
 
             # Get session for downloading
             session = await self.session_manager.get_session("qobuz")
@@ -1178,7 +1176,7 @@ class QobuzDownloader(BaseDownloader):
                 folder,
                 artwork_urls,
             )
-            embed_cover_path, _ = await download_artwork(
+            embed_cover_path, _ = await download_artwork_singleflight(
                 session, folder, artwork_urls, artwork_config
             )
             logger.debug(
