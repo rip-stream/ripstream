@@ -23,10 +23,12 @@ ART_SIZE = 180
 ART_CORNER_RADIUS = 4
 MARGIN = 8
 
-DOWNLOAD_BUTTON_SIZE = 36
+DOWNLOAD_BUTTON_RATIO = 0.40  # Button is 75% of the album art
+DOWNLOAD_BUTTON_SIZE = int(ART_SIZE * DOWNLOAD_BUTTON_RATIO)
 DOWNLOAD_BUTTON_BORDER_WIDTH = 1
 DOWNLOAD_BUTTON_CORNER_RADIUS = DOWNLOAD_BUTTON_SIZE // 2  # circular pill
-DOWNLOAD_ICON_SIZE = 20
+# Keep icon size proportional to button size (roughly same ratio as before: 20/36 ≈ 0.56)
+DOWNLOAD_ICON_SIZE = int(DOWNLOAD_BUTTON_SIZE * 0.56)
 
 TRACK_COUNT_WIDTH = 24
 TRACK_COUNT_HEIGHT = 20
@@ -152,18 +154,17 @@ class AlbumArtWidget(QWidget):
                 }}
             """
             )
-            # Position explicit indicator in bottom-left corner (opposite of download button)
+            # Position explicit indicator in bottom-left corner independent of download button size
             self.explicit_btn.move(
                 MARGIN,
-                ART_SIZE - DOWNLOAD_BUTTON_SIZE - MARGIN + EXPLICIT_BUTTON_Y_ADJUST,
+                ART_SIZE - EXPLICIT_BUTTON_SIZE - MARGIN + EXPLICIT_BUTTON_Y_ADJUST,
             )
             self.explicit_btn.raise_()
 
-        # Position download button in bottom-right corner
-        self.download_btn.move(
-            ART_SIZE - DOWNLOAD_BUTTON_SIZE - MARGIN,
-            ART_SIZE - DOWNLOAD_BUTTON_SIZE - MARGIN,
-        )
+        # Center the download button horizontally and vertically on the album art
+        centered_x = (ART_SIZE - DOWNLOAD_BUTTON_SIZE) // 2
+        centered_y = (ART_SIZE - DOWNLOAD_BUTTON_SIZE) // 2
+        self.download_btn.move(centered_x, centered_y)
         self.download_btn.raise_()  # Ensure button is on top
 
         # Title and year labels
