@@ -65,6 +65,12 @@ class MetadataService(QObject):
         # Start fetching
         self.current_fetcher.start()
 
+    def get_last_parsed_url(self) -> ParsedURL | None:
+        """Return the last fetcher's parsed URL if available."""
+        if self.current_fetcher and hasattr(self.current_fetcher, "parsed_url"):
+            return self.current_fetcher.parsed_url
+        return None
+
     def _get_credentials_for_service(
         self, service: StreamingSource
     ) -> dict[str, Any] | None:

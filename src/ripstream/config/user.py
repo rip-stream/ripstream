@@ -111,8 +111,12 @@ class DatabaseConfig(BaseConfig):
         description="Path to the downloads database",
     )
     history_limit: int = Field(
-        default=100,
+        default=25,
         description="Maximum number of download history items to display in UI",
+    )
+    session_snapshot_items_cap: int = Field(
+        default=1000,
+        description="Maximum number of items to store in session snapshot (0 for unlimited)",
     )
 
     @field_validator("database_path", mode="before")
@@ -131,6 +135,15 @@ class DatabaseConfig(BaseConfig):
         """Validate history limit is positive."""
         if v <= 0:
             msg = "History limit must be positive"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("session_snapshot_items_cap")
+    @classmethod
+    def validate_session_snapshot_cap(cls, v: int) -> int:
+        """Validate cap is non-negative (0 means unlimited)."""
+        if v < 0:
+            msg = "Session snapshot items cap must be 0 (unlimited) or positive"
             raise ValueError(msg)
         return v
 
@@ -311,7 +324,7 @@ class CLIConfig(BaseConfig):
         default=True, description="Show resolve and download progress bars"
     )
     max_search_results: int = Field(
-        default=100, description="Maximum search results in interactive menu"
+        default=25, description="Maximum search results in interactive menu"
     )
 
     @field_validator("max_search_results")

@@ -75,6 +75,18 @@ class URLInputWidget(QWidget):
             return ArtistItemFilter.SINGLES_ONLY
         return ArtistItemFilter.BOTH
 
+    def set_artist_filter(self, filter_value: ArtistItemFilter) -> None:
+        """Set the artist item filter dropdown from an enum value."""
+        mapping: dict[ArtistItemFilter, str] = {
+            ArtistItemFilter.BOTH: "Both",
+            ArtistItemFilter.ALBUMS_ONLY: "Albums Only",
+            ArtistItemFilter.SINGLES_ONLY: "Singles Only",
+        }
+        label = mapping.get(filter_value, "Both")
+        index = self.filter_dropdown.findText(label)
+        if index >= 0:
+            self.filter_dropdown.setCurrentIndex(index)
+
     def detect_service(self, url: str) -> str | None:
         """Detect streaming service from URL."""
         if not url:

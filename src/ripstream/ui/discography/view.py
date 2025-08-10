@@ -239,6 +239,188 @@ class DiscographyView(QWidget):
         # Reapply filter so the newly shown view matches current search
         self._apply_search_filter()
 
+    # --- Session snapshot helpers ---
+    def build_session_snapshot(self) -> dict[str, Any]:
+        """Build a compact snapshot of current content and UI state."""
+        snapshot: dict[str, Any] = {
+            **self._snapshot_view_and_sort(),
+            **self._snapshot_search(),
+            **self._snapshot_scroll_positions(),
+            **self._snapshot_selection(),
+        }
+        snapshot["items"] = self._snapshot_items()
+        return snapshot
+
+    def _snapshot_view_and_sort(self) -> dict[str, Any]:
+        return {
+            "view_type": self.current_view,
+            "sort_key": self._current_sort_key,
+            "sort_desc": self._current_sort_desc,
+            "sort_applied": bool(self._sort_applied),
+        }
+
+    def _snapshot_search(self) -> dict[str, Any]:
+        if self.search_input is not None:
+            return {"search_query": self.search_input.text()}
+        return {"search_query": ""}
+
+    def _snapshot_items(self) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        album_to_art_url = self._map_album_to_artwork_url_from_list()
+        from PyQt6.QtCore import Qt
+
+        for row in range(self.list_view.rowCount()):
+            title_item = self.list_view.item(row, 0)
+            if not title_item:
+                continue
+            row_data = title_item.data(Qt.ItemDataRole.UserRole + 1)
+            if isinstance(row_data, dict):
+                items.append(row_data)
+        for widget in getattr(self.grid_view, "items", []):
+            data = getattr(widget, "item_data", None)
+            if not data:
+                continue
+            pruned = {k: v for k, v in data.items() if k != "pixmap"}
+            if not pruned.get("artwork_url"):
+                album_id = str(pruned.get("id") or "")
+                inferred = album_to_art_url.get(album_id)
+                if inferred:
+                    pruned["artwork_url"] = inferred
+            items.append(pruned)
+        return items
+
+    def _map_album_to_artwork_url_from_list(self) -> dict[str, str]:
+        from PyQt6.QtCore import Qt
+
+        mapping: dict[str, str] = {}
+        for row in range(self.list_view.rowCount()):
+            title_item = self.list_view.item(row, 0)
+            if not title_item:
+                continue
+            row_data = title_item.data(Qt.ItemDataRole.UserRole + 1)
+            if not isinstance(row_data, dict):
+                continue
+            album_id = str(row_data.get("album_id") or "")
+            art_url = row_data.get("artwork_url")
+            if album_id and isinstance(art_url, str) and art_url:
+                mapping.setdefault(album_id, art_url)
+        return mapping
+
+    def _snapshot_scroll_positions(self) -> dict[str, int]:
+        grid_scrollbar = getattr(self.grid_view, "verticalScrollBar", None)
+        list_scrollbar = getattr(self.list_view, "verticalScrollBar", None)
+        grid_val = (
+            self.grid_view.verticalScrollBar().value()
+            if callable(grid_scrollbar)
+            else 0
+        )
+        list_val = (
+            self.list_view.verticalScrollBar().value()
+            if callable(list_scrollbar)
+            else 0
+        )
+        return {"grid_scroll": grid_val, "list_scroll": list_val}
+
+    def _snapshot_selection(self) -> dict[str, Any]:
+        from PyQt6.QtCore import Qt as _Qt
+
+        current_row = self.list_view.currentRow()
+        if current_row >= 0:
+            title_item = self.list_view.item(current_row, 0)
+            if title_item:
+                selected_id = title_item.data(_Qt.ItemDataRole.UserRole)
+                if selected_id:
+                    return {"selected_list_item_id": selected_id}
+        return {}
+
+    def restore_session_snapshot(self, snapshot: dict[str, Any]) -> None:
+        """Restore content and UI state from a snapshot dict with small helpers."""
+        if not snapshot:
+            return
+        self.clear_all()
+        self._restore_items(snapshot.get("items", []))
+        self._restore_view(snapshot.get("view_type"))
+        self._restore_search(snapshot.get("search_query", "") or "")
+        self._restore_sort(snapshot)
+        self._restore_scrolls(snapshot)
+        self._restore_selection(snapshot.get("selected_list_item_id"))
+        self._enrich_album_artwork_urls_from_list()
+
+    def _restore_items(self, items: Any) -> None:
+        if not isinstance(items, list):
+            return
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            item_type = (item.get("type") or "").lower()
+            if item_type == "album":
+                self.grid_view.add_item(item, self.pending_artwork)
+            elif item_type == "track" or item.get("track_number") is not None:
+                self.list_view.add_item(item, item.get("source"))
+
+    def _restore_view(self, view_type: Any) -> None:
+        if view_type in {"grid", "list"}:
+            self.switch_view(view_type)
+
+    def _restore_search(self, query: str) -> None:
+        if self.search_input is not None:
+            self.search_input.setText(query)
+            self._apply_search_filter()
+
+    def _restore_sort(self, snapshot: dict[str, Any]) -> None:
+        if "sort_key" in snapshot:
+            self._current_sort_key = snapshot.get("sort_key", self._current_sort_key)
+        if "sort_desc" in snapshot:
+            self._current_sort_desc = bool(snapshot.get("sort_desc"))
+        if snapshot.get("sort_applied"):
+            self._sort_applied = True
+            self._apply_sort_to_views()
+            self._update_sort_ui()
+
+    def _restore_scrolls(self, snapshot: dict[str, Any]) -> None:
+        grid_scroll = int(snapshot.get("grid_scroll", 0) or 0)
+        self.grid_view.verticalScrollBar().setValue(grid_scroll)
+        list_scroll = int(snapshot.get("list_scroll", 0) or 0)
+        self.list_view.verticalScrollBar().setValue(list_scroll)
+
+    def _restore_selection(self, selected_id: Any) -> None:
+        if not selected_id:
+            return
+        from PyQt6.QtCore import Qt as _Qt
+
+        for row in range(self.list_view.rowCount()):
+            title_item = self.list_view.item(row, 0)
+            if title_item and title_item.data(_Qt.ItemDataRole.UserRole) == selected_id:
+                self.list_view.setCurrentCell(row, 0)
+                break
+
+    def _enrich_album_artwork_urls_from_list(self) -> None:
+        from PyQt6.QtCore import Qt as _Qt2
+
+        album_to_art_url: dict[str, str] = {}
+        for row in range(self.list_view.rowCount()):
+            title_item = self.list_view.item(row, 0)
+            if not title_item:
+                continue
+            row_data = title_item.data(_Qt2.ItemDataRole.UserRole + 1)
+            if not isinstance(row_data, dict):
+                continue
+            album_id = str(row_data.get("album_id") or "")
+            art_url = row_data.get("artwork_url")
+            if album_id and isinstance(art_url, str) and art_url:
+                album_to_art_url.setdefault(album_id, art_url)
+
+        for widget in getattr(self.grid_view, "items", []):
+            album_id = getattr(widget, "item_id", "")
+            if not album_id:
+                continue
+            data = getattr(widget, "item_data", {}) or {}
+            if not data.get("artwork_url"):
+                inferred = album_to_art_url.get(album_id)
+                if inferred:
+                    data["artwork_url"] = inferred
+                    widget.item_data = data
+
     def add_item(self, item_data: dict[str, Any], service: str | None = None):
         """Add an item to both views."""
         item_id = item_data.get("id", "")
@@ -287,6 +469,18 @@ class DiscographyView(QWidget):
             )
         ):
             # For grid view, add the album as a single item
+            # Prefer album artwork thumbnail when available; otherwise fallback to first track artwork
+            artwork_url = (
+                album_info.get("artwork_thumbnail")
+                if isinstance(album_info, dict)
+                else None
+            )
+            if not artwork_url and tracks:
+                track0 = tracks[0] if isinstance(tracks, list) and tracks else {}
+                artwork_url = (
+                    track0.get("artwork_url") if isinstance(track0, dict) else None
+                )
+
             album_item = {
                 "id": album_id,
                 "title": album_info.get("title", "Unknown Album"),
@@ -296,7 +490,7 @@ class DiscographyView(QWidget):
                 "duration_formatted": album_info.get("total_duration", ""),
                 "track_count": album_info.get("total_tracks", len(tracks)),
                 "quality": album_info.get("quality", ""),
-                "artwork_url": tracks[0].get("artwork_url") if tracks else None,
+                "artwork_url": artwork_url,
                 "hires": album_info.get("hires", False),
                 "is_explicit": album_info.get("is_explicit", False),
                 "source": service,

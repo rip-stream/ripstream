@@ -21,7 +21,8 @@ class AlbumArtGridView(QScrollArea):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.items = []
-        self.count_label = None
+        # Initialize with a non-None QLabel to satisfy type checkers
+        self.count_label = QLabel("0 Albums")
         self._current_downloaded_albums = set()  # Initialize empty set
         self._filter_text: str = ""
         self.setup_ui()
@@ -150,6 +151,7 @@ class AlbumArtGridView(QScrollArea):
                 return
 
         # If item not found, the parent DiscographyView will handle pending artwork
+        # No-op if not found; parent will handle
 
     def clear_items(self):
         """Clear all items from the grid."""

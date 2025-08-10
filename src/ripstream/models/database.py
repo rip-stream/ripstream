@@ -400,3 +400,40 @@ class DownloadHistory(Base):
         self.file_exists = exists
         self.last_verified_at = datetime.now(UTC)
         return exists
+
+
+class UISessionState(Base):
+    """Persisted UI working session snapshot for restoring on next launch.
+
+    This table stores a single logical record identified by a unique key. The
+    record contains the last used URL, the selected artist filter, and a
+    condensed metadata snapshot sufficient to rebuild the discography view
+    without re-fetching from the network.
+    """
+
+    __tablename__ = "ui_session_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # Unique logical key for the record (allows future multiple sessions)
+    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+
+    # Minimal UI state
+    last_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    artist_filter: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    view_name: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    search_query: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+    # Snapshot of last discography metadata to quickly rebuild UI
+    metadata_snapshot: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )

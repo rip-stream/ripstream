@@ -481,6 +481,13 @@ class DownloadsTab(BasePreferenceTab):
         self.history_limit.setSuffix(" items")
         database_layout.addRow("History Display Limit:", self.history_limit)
 
+        # Session snapshot items cap (0 = Unlimited)
+        self.session_snapshot_cap = QSpinBox()
+        self.session_snapshot_cap.setRange(0, 100000)
+        self.session_snapshot_cap.setSpecialValueText("Unlimited")
+        self.session_snapshot_cap.setSuffix(" items")
+        database_layout.addRow("Session Snapshot Items Cap:", self.session_snapshot_cap)
+
         layout.addWidget(database_group)
         layout.addStretch()
 
@@ -504,7 +511,15 @@ class DownloadsTab(BasePreferenceTab):
 
         self.track_downloads.setChecked(self.config.database.downloads_enabled)
         self.downloads_db_path.setText(str(self.config.database.database_path))
-        self.history_limit.setValue(self.config.database.history_limit)
+        # Keep database history limit aligned with search results preference
+        self.history_limit.setValue(self.config.cli.max_search_results)
+        # Load snapshot cap from config (0 = unlimited)
+        cap_val_raw = getattr(self.config.database, "session_snapshot_items_cap", 1000)
+        try:
+            cap_val = int(cap_val_raw)
+        except (TypeError, ValueError):
+            cap_val = 1000
+        self.session_snapshot_cap.setValue(cap_val)
 
     def save_config(self):
         """Save download configuration."""
@@ -515,7 +530,13 @@ class DownloadsTab(BasePreferenceTab):
 
         self.config.database.downloads_enabled = self.track_downloads.isChecked()
         self.config.database.database_path = Path(self.downloads_db_path.text())
+        # Keep both settings in sync
+        self.config.cli.max_search_results = self.history_limit.value()
         self.config.database.history_limit = self.history_limit.value()
+        # Save session snapshot cap
+        self.config.database.session_snapshot_items_cap = int(
+            self.session_snapshot_cap.value()
+        )
 
 
 class AudioTab(BasePreferenceTab):
@@ -704,8 +725,8 @@ class AdvancedTab(BasePreferenceTab):
 
         layout.addWidget(lastfm_group)
 
-        # CLI Settings
-        cli_group = QGroupBox("CLI Settings")
+        # Search Settings
+        cli_group = QGroupBox("Search Settings")
         cli_layout = QFormLayout(cli_group)
 
         self.max_search_results = QSpinBox()
@@ -736,7 +757,7 @@ class AdvancedTab(BasePreferenceTab):
         if fallback_index >= 0:
             self.lastfm_fallback.setCurrentIndex(fallback_index)
 
-        # CLI
+        # Search
         self.max_search_results.setValue(self.config.cli.max_search_results)
 
     def save_config(self):
@@ -753,5 +774,7 @@ class AdvancedTab(BasePreferenceTab):
         self.config.lastfm.source = self.lastfm_source.currentText()
         self.config.lastfm.fallback_source = self.lastfm_fallback.currentText()
 
-        # CLI
+        # Search
         self.config.cli.max_search_results = self.max_search_results.value()
+        # Keep database history limit in sync with search preference
+        self.config.database.history_limit = self.config.cli.max_search_results

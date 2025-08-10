@@ -3,6 +3,8 @@
 
 """Album art widget for displaying album artwork."""
 
+from hashlib import sha256
+from pathlib import Path
 from typing import Any
 
 import qtawesome as qta
@@ -245,35 +247,42 @@ class AlbumArtWidget(QWidget):
 
     def load_artwork(self):
         """Load artwork or show placeholder with rounded corners."""
-        # For now, create a placeholder with the first letter of the title
+        # Try to load cached artwork from ~/.cache/ripstream based on artwork_url
+        cache_pixmap: QPixmap | None = None
+        artwork_url = self.item_data.get("artwork_url")
+        if artwork_url:
+            url_hash = sha256(artwork_url.encode()).hexdigest()
+            cache_file = (
+                Path.home() / ".cache" / "ripstream" / f"artwork_{url_hash}.jpg"
+            )
+            if cache_file.exists():
+                cache_pixmap = QPixmap(str(cache_file))
+
+        if cache_pixmap and not cache_pixmap.isNull():
+            self.update_artwork(cache_pixmap)
+            return
+
+        # Fallback: create a placeholder with the first letter of the title
         title = self.item_data.get("title", "Unknown")
         first_letter = title[0].upper() if title else "?"
 
-        # Create a pixmap with rounded corners
         pixmap = QPixmap(ART_SIZE, ART_SIZE)
         pixmap.fill(Qt.GlobalColor.transparent)
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Create rounded rectangle path
         path = QPainterPath()
         path.addRoundedRect(
             0, 0, ART_SIZE, ART_SIZE, ART_CORNER_RADIUS, ART_CORNER_RADIUS
         )
-
-        # Set clipping path
         painter.setClipPath(path)
 
-        # Fill with background color
         painter.fillRect(0, 0, ART_SIZE, ART_SIZE, QColor("#e0e0e0"))
-
-        # Draw background circle
         painter.setBrush(QBrush(QColor("#2196F3")))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(40, 40, 100, 100)
 
-        # Draw letter
         painter.setPen(QColor("white"))
         font = painter.font()
         font.setPointSize(48)

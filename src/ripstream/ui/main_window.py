@@ -7,11 +7,7 @@ import logging
 import sys
 
 from PyQt6.QtGui import QAction, QCloseEvent, QKeySequence
-from PyQt6.QtWidgets import (
-    QApplication,
-    QMainWindow,
-    QMessageBox,
-)
+from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox
 
 from ripstream.config.user import UserConfig
 from ripstream.core.url_parser import URLParser, parse_music_url
@@ -20,6 +16,7 @@ from ripstream.ui.download_handler import DownloadHandler
 from ripstream.ui.metadata_service import MetadataService
 from ripstream.ui.preferences import PreferencesDialog
 from ripstream.ui.resources import get_application_icon
+from ripstream.ui.session_manager import WorkingSessionManager
 from ripstream.ui.ui_manager import UIManager
 
 logger = logging.getLogger(__name__)
@@ -64,6 +61,13 @@ class MainWindow(QMainWindow):
         # Setup menus and restore geometry
         self.setup_menus()
         self.ui_manager.restore_geometry()
+
+        # Initialize working session manager and attempt to restore last session
+        self.session_manager = WorkingSessionManager()
+        try:
+            self._restore_working_session()
+        except Exception:
+            logger.exception("Failed to restore previous session")
 
     def _connect_metadata_signals(self):
         """Connect metadata service signals to handlers."""
@@ -234,6 +238,12 @@ class MainWindow(QMainWindow):
 
         # Save window geometry
         self.ui_manager.save_geometry()
+
+        # Persist working session snapshot
+        try:
+            self._save_working_session()
+        except Exception:
+            logger.exception("Failed to save session snapshot")
 
         a0.accept()
 
@@ -460,6 +470,12 @@ class MainWindow(QMainWindow):
         finally:
             self.ui_manager.set_loading_state(False)
 
+        # Save snapshot after new metadata applied
+        try:
+            self._save_working_session()
+        except Exception:
+            logger.exception("Failed to save session snapshot after metadata")
+
     def handle_album_ready(self, album_metadata: dict):
         """Handle individual album fetched during streaming."""
         try:
@@ -476,6 +492,12 @@ class MainWindow(QMainWindow):
 
         except Exception:
             logger.exception("Failed to handle album ready")
+
+        # Save snapshot incrementally for streaming scenarios
+        try:
+            self._save_working_session()
+        except Exception:
+            logger.exception("Failed to save session snapshot after album")
 
     def handle_artwork_ready(self, item_id: str, pixmap):
         """Handle artwork fetched for an item."""
@@ -509,6 +531,108 @@ class MainWindow(QMainWindow):
         """Handle metadata fetching errors."""
         self.ui_manager.update_status(f"Error: {error_message}")
         self.ui_manager.set_loading_state(False)
+
+    # --- Session persistence helpers ---
+    def _save_working_session(self) -> None:
+        """Capture UI state and persist to the session store."""
+        discography_view = self.ui_manager.get_discography_view()
+        navbar = self.ui_manager.get_navbar()
+        if not discography_view or not navbar:
+            return
+
+        # Build snapshot from the view
+        snapshot = discography_view.build_session_snapshot()
+
+        # Read URL and artist filter
+        last_url = navbar.get_current_url()
+        artist_filter_enum = (
+            navbar.url_widget.get_artist_filter()
+            if hasattr(navbar, "url_widget")
+            else None
+        )
+        artist_filter_value = artist_filter_enum.name if artist_filter_enum else None
+
+        # Determine current view from main panel
+        current_view_name = None
+        if hasattr(self.ui_manager, "main_panel") and self.ui_manager.main_panel:
+            current_view_name = self.ui_manager.main_panel.current_view
+
+        # Capture navbar state (filter index)
+        filter_index = None
+        filter_index = None
+        url_widget = getattr(navbar, "url_widget", None)
+        dropdown = getattr(url_widget, "filter_dropdown", None)
+        if hasattr(dropdown, "currentIndex") and callable(dropdown.currentIndex):
+            filter_index = dropdown.currentIndex()
+
+        # Capture downloads view scroll position
+        downloads_scroll = None
+        downloads_view = self.ui_manager.get_downloads_view()
+        if downloads_view and hasattr(downloads_view, "downloads_table"):
+            downloads_scroll = (
+                downloads_view.downloads_table.verticalScrollBar().value()
+            )
+
+        payload = {
+            "last_url": last_url,
+            "artist_filter": artist_filter_value,
+            "filter_index": filter_index,
+            "view_name": current_view_name,
+            "metadata_snapshot": snapshot,
+            "downloads_scroll": downloads_scroll,
+        }
+        self.session_manager.save(payload)
+
+    def _restore_working_session(self) -> None:
+        """Restore the previous working session if present."""
+        state = self.session_manager.load()
+        if not state:
+            return
+
+        navbar = self.ui_manager.get_navbar()
+        discography_view = self.ui_manager.get_discography_view()
+        if not navbar or not discography_view:
+            return
+
+        self._restore_navbar_state(navbar, state)
+        self._restore_discography_state(discography_view, state)
+        self._restore_main_view(state)
+        self._restore_downloads_scroll(state)
+
+    def _restore_navbar_state(self, navbar, state: dict) -> None:
+        if state.get("last_url"):
+            navbar.set_url(state["last_url"])
+        from ripstream.models.enums import ArtistItemFilter
+
+        filter_name = state.get("artist_filter")
+        url_widget = getattr(navbar, "url_widget", None)
+        if filter_name and hasattr(url_widget, "set_artist_filter"):
+            try:
+                filter_enum = ArtistItemFilter[filter_name]
+                url_widget.set_artist_filter(filter_enum)
+            except KeyError:
+                pass
+        idx = state.get("filter_index")
+        dropdown = getattr(url_widget, "filter_dropdown", None)
+        if isinstance(idx, int) and idx >= 0 and hasattr(dropdown, "setCurrentIndex"):
+            dropdown.setCurrentIndex(idx)
+
+    def _restore_discography_state(self, discography_view, state: dict) -> None:
+        snapshot = state.get("metadata_snapshot") or {}
+        discography_view.restore_session_snapshot(snapshot)
+
+    def _restore_main_view(self, state: dict) -> None:
+        view_name = state.get("view_name")
+        if isinstance(view_name, str) and view_name:
+            self.ui_manager.switch_to_view(view_name)
+
+    def _restore_downloads_scroll(self, state: dict) -> None:
+        downloads_view = self.ui_manager.get_downloads_view()
+        if not downloads_view or not hasattr(downloads_view, "downloads_table"):
+            return
+        scroll_val = state.get("downloads_scroll")
+        if isinstance(scroll_val, int):
+            downloads_view.downloads_table.verticalScrollBar().setValue(scroll_val)
 
 
 def main():
