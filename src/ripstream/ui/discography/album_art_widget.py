@@ -51,6 +51,8 @@ class AlbumArtWidget(QWidget):
         self.art_label = None
         # Track current status to avoid unintended resets. Values: "idle" | "queued" | "downloading" | "downloaded"
         self._status: str = "idle"
+        # Keep a reference to any active icon animation to avoid garbage collection
+        self._spin_animation = None
         self.setup_ui()
 
     def setup_ui(self):
@@ -345,6 +347,8 @@ class AlbumArtWidget(QWidget):
 
     def set_queued_status(self):
         """Update the download button to show queued status."""
+        # Clear any active animation from previous states
+        self._spin_animation = None
         self.download_btn.setIcon(qta.icon("fa5s.clock", color="orange"))
         self.download_btn.setStyleSheet(
             f"""
@@ -367,7 +371,13 @@ class AlbumArtWidget(QWidget):
 
     def set_downloading_status(self):
         """Update the button to show downloading (work in progress) status."""
-        self.download_btn.setIcon(qta.icon("fa5s.sync-alt", color="#00BFFF"))
+        if self._spin_animation is None:
+            # Create a spin animation and keep a reference so it stays alive
+            self._spin_animation = qta.Spin(self.download_btn)
+        # Use a spinner icon with a spin animation
+        self.download_btn.setIcon(
+            qta.icon("fa5s.spinner", color="#00BFFF", animation=self._spin_animation)
+        )
         self.download_btn.setStyleSheet(
             f"""
             QPushButton {{
@@ -390,6 +400,8 @@ class AlbumArtWidget(QWidget):
     def set_downloaded_status(self, is_downloaded: bool):
         """Update the download button to show downloaded status."""
         if is_downloaded:
+            # Clear any active animation
+            self._spin_animation = None
             # Replace download button with downloaded indicator
             self.download_btn.setIcon(qta.icon("fa5s.check-circle", color="green"))
             self.download_btn.setStyleSheet(
@@ -415,6 +427,8 @@ class AlbumArtWidget(QWidget):
 
     def set_idle_status(self):
         """Reset button to default idle (download) state."""
+        # Clear any active animation
+        self._spin_animation = None
         self.download_btn.setIcon(qta.icon("fa5s.download", color="white"))
         self.download_btn.setStyleSheet(
             f"""
