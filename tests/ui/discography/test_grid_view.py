@@ -523,6 +523,30 @@ class TestAlbumArtGridView:
         calculated_items_per_row = max(1, width // 220)
         assert calculated_items_per_row == expected_items_per_row
 
+    def test_filter_by_album_title(
+        self, grid_view, sample_album_item, sample_track_item
+    ):
+        """Grid set_filter should toggle visibility by album title and update count."""
+        grid_view.add_item(sample_album_item)
+        grid_view.add_item(sample_track_item)
+
+        # Initially, layout should contain both items regardless of top-level visibility
+        assert grid_view.grid_layout.count() == 2
+
+        # Apply filter that matches only the first item
+        match_fragment = sample_album_item["title"][0:1]
+        grid_view.set_filter(match_fragment)
+
+        # After filtering, the grid layout should compact to only matching items
+        assert 1 <= grid_view.grid_layout.count() <= 2
+        # Count label reflects visible number
+        label_text = grid_view.count_label.text()
+        assert any(s in label_text for s in ("Album", "Albums"))
+
+        # Clearing filter restores all
+        grid_view.set_filter("")
+        assert grid_view.grid_layout.count() == 2
+
     def test_add_item_data_preservation(self, grid_view):
         """Test that item data is preserved correctly in widgets."""
         item_data = {

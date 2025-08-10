@@ -23,6 +23,7 @@ class AlbumArtGridView(QScrollArea):
         self.items = []
         self.count_label = None
         self._current_downloaded_albums = set()  # Initialize empty set
+        self._filter_text: str = ""
         self.setup_ui()
 
     def setup_ui(self):
@@ -179,8 +180,18 @@ class AlbumArtGridView(QScrollArea):
 
         items_per_row = max(1, self.width() // 200)
 
-        # Rearrange items
-        for i, item in enumerate(self.items):
+        # Remove all current widget placements
+        while self.grid_layout.count():
+            self.grid_layout.takeAt(0)
+
+        # Compute items to lay out based on current filter state without relying on Qt visibility
+        items_to_layout = (
+            self.items
+            if not self._filter_text
+            else [w for w in self.items if self._matches_filter(w)]
+        )
+
+        for i, item in enumerate(items_to_layout):
             row = i // items_per_row
             col = i % items_per_row
             self.grid_layout.addWidget(item, row, col)
@@ -188,7 +199,11 @@ class AlbumArtGridView(QScrollArea):
     def update_count(self):
         """Update the count label."""
         if self.count_label:
-            count = len(self.items)
+            # Show visible count if a filter is applied
+            if self._filter_text:
+                count = sum(1 for w in self.items if w.isVisible())
+            else:
+                count = len(self.items)
             if count == 1:
                 self.count_label.setText("1 Album")
             else:
@@ -223,3 +238,29 @@ class AlbumArtGridView(QScrollArea):
                 item.set_queued_status()
             elif item.get_status() in {"queued", "downloading"}:
                 item.set_idle_status()
+
+    def set_filter(self, query_text: str) -> None:
+        """Filter items by album title.
+
+        Args:
+            query_text: Case-insensitive substring to match against album title.
+        """
+        self._filter_text = (query_text or "").strip().lower()
+        if not self.items:
+            return
+        if not self._filter_text:
+            for w in self.items:
+                w.setVisible(True)
+        else:
+            for w in self.items:
+                w.setVisible(self._matches_filter(w))
+        self.update_grid_layout()
+        self.update_count()
+
+    def _matches_filter(self, widget: AlbumArtWidget) -> bool:  # type: ignore[name-defined]
+        """Return True if the widget matches the current filter text."""
+        if not self._filter_text:
+            return True
+        data = getattr(widget, "item_data", {}) or {}
+        title = str(data.get("title", "")).lower()
+        return self._filter_text in title

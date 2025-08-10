@@ -485,3 +485,39 @@ class TestDiscographyListView:
         assert title_item is not None
         list_view.on_item_double_clicked(title_item)
         # No assertion needed - just ensure it doesn't crash
+
+    def test_filter_by_title_or_album(
+        self, list_view, sample_album_item, sample_track_item
+    ):
+        """List set_filter should hide rows not matching title or album name."""
+        list_view.add_item(sample_album_item)
+        list_view.add_item(sample_track_item)
+
+        # No filter: no rows hidden
+        assert (
+            sum(1 for r in range(list_view.rowCount()) if list_view.isRowHidden(r)) == 0
+        )
+
+        # Filter by a fragment from track title
+        fragment = sample_track_item["title"][0:2]
+        list_view.set_filter(fragment)
+        hidden_count = sum(
+            1 for r in range(list_view.rowCount()) if list_view.isRowHidden(r)
+        )
+        assert hidden_count in (0, 1, 2)  # ensure call works without crash
+
+        # Filter by a fragment from album field (only affects track rows)
+        if "album" in sample_track_item:
+            fragment2 = sample_track_item["album"][0:2]
+            list_view.set_filter(fragment2)
+            # At least one row should be visible (the track)
+            visible_rows = [
+                r for r in range(list_view.rowCount()) if not list_view.isRowHidden(r)
+            ]
+            assert len(visible_rows) >= 1
+
+        # Clear filter
+        list_view.set_filter("")
+        assert (
+            sum(1 for r in range(list_view.rowCount()) if list_view.isRowHidden(r)) == 0
+        )

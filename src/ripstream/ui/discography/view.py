@@ -6,12 +6,14 @@
 from typing import Any
 
 import qtawesome as qta
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QButtonGroup,
+    QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QStackedWidget,
     QToolButton,
@@ -46,6 +48,9 @@ class DiscographyView(QWidget):
         self.downloaded_albums = set()  # Store downloaded album_id/source combinations
         self._downloading_album_ids: set[str] = set()
         self._pending_album_ids: set[str] = set()
+        self._search_debounce_ms: int = 300
+        self._search_timer: QTimer | None = None
+        self.search_input: QLineEdit | None = None
         self.setup_ui()
 
     def update_downloaded_albums(self, downloaded_albums: set):
@@ -158,6 +163,25 @@ class DiscographyView(QWidget):
         controls_layout.addWidget(self.sort_title_btn)
         controls_layout.addWidget(self.sort_artist_btn)
         controls_layout.addWidget(self.sort_year_btn)
+        # Sunken divider next to sort controls
+        sort_divider = QFrame()
+        sort_divider.setFrameShape(QFrame.Shape.VLine)
+        sort_divider.setFrameShadow(QFrame.Shadow.Sunken)
+        controls_layout.addWidget(sort_divider)
+        # Search input with debounce
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search albums or tracks…")
+        from contextlib import suppress
+
+        with suppress(Exception):
+            # Older bindings may not support it
+            self.search_input.setClearButtonEnabled(True)
+        controls_layout.addWidget(self.search_input)
+        # Debounce timer
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.timeout.connect(self._on_search_debounced)
+        self.search_input.textChanged.connect(self._on_search_text_changed)
         controls_layout.addStretch()
 
         layout.addLayout(controls_layout)
@@ -212,6 +236,8 @@ class DiscographyView(QWidget):
         # Reapply current sort to the newly shown view for consistency (if applied)
         self._apply_sort_to_views()
         self._update_sort_ui()
+        # Reapply filter so the newly shown view matches current search
+        self._apply_search_filter()
 
     def add_item(self, item_data: dict[str, Any], service: str | None = None):
         """Add an item to both views."""
@@ -233,6 +259,8 @@ class DiscographyView(QWidget):
         # Maintain sorting live if already applied
         if self._sort_applied:
             self._apply_sort_to_views()
+        # Maintain filtering live
+        self._apply_search_filter()
 
     def add_album_content(
         self,
@@ -298,6 +326,8 @@ class DiscographyView(QWidget):
         # Maintain sorting live if already applied
         if self._sort_applied:
             self._apply_sort_to_views()
+        # Maintain filtering live
+        self._apply_search_filter()
 
     def update_item_artwork(self, item_id: str, pixmap: QPixmap):
         """Update artwork for a specific item in both views."""
@@ -374,6 +404,8 @@ class DiscographyView(QWidget):
         # Reapply current sort after content changes (if applied)
         self._apply_sort_to_views()
         self._update_sort_ui()
+        # Reapply filter after content changes
+        self._apply_search_filter()
 
     def add_album_progressively(self, album_metadata: dict[str, Any]):
         """Add a single album to the view progressively during streaming."""
@@ -473,6 +505,36 @@ class DiscographyView(QWidget):
                 self.sort_title_btn.setChecked(False)
                 self.sort_artist_btn.setChecked(False)
                 self.sort_year_btn.setChecked(True)
+
+    def _on_search_text_changed(self, _text: str) -> None:
+        """Debounce search input changes before applying filter."""
+        if self._search_timer is None:
+            return
+        self._search_timer.start(self._search_debounce_ms)
+
+    def _on_search_debounced(self) -> None:
+        """Apply filter after debounce timeout."""
+        self._apply_search_filter()
+
+    def _apply_search_filter(self) -> None:
+        """Apply current search text as filter to both views.
+
+        - Grid view filters by album title
+        - List view filters by album or track title
+        """
+        query = ""
+        if self.search_input is not None:
+            query = self.search_input.text()
+
+        if hasattr(self, "grid_view") and self.grid_view:
+            set_filter = getattr(self.grid_view, "set_filter", None)
+            if callable(set_filter):
+                set_filter(query)
+
+        if hasattr(self, "list_view") and self.list_view:
+            set_filter = getattr(self.list_view, "set_filter", None)
+            if callable(set_filter):
+                set_filter(query)
 
     def set_loading_state(self, loading: bool):
         """Set loading state for the view."""

@@ -90,6 +90,7 @@ class DiscographyListView(QTableWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._current_downloaded_albums = set()  # Initialize empty set
+        self._filter_text: str = ""
         self.setup_ui()
 
     def setup_ui(self):
@@ -380,3 +381,29 @@ class DiscographyListView(QTableWidget):
                         download_btn.setIcon(qta.icon("fa5s.download"))
                         download_btn.setEnabled(True)
                         download_btn.setStyleSheet("")
+
+    def set_filter(self, query_text: str) -> None:
+        """Filter rows by album or track title.
+
+        - Matches against 'title' (track or album name)
+        - Also matches 'album' field for tracks
+
+        Args:
+            query_text: Case-insensitive substring to match.
+        """
+        self._filter_text = (query_text or "").strip().lower()
+        # Iterate rows and toggle visibility
+        for row in range(self.rowCount()):
+            title_item = self.item(row, 0)
+            if not title_item:
+                # If no title cell, default to show
+                self.setRowHidden(row, False)
+                continue
+            item_data = title_item.data(Qt.ItemDataRole.UserRole + 1) or {}
+            title = str(item_data.get("title", "")).lower()
+            album = str(item_data.get("album", "")).lower()
+            if not self._filter_text:
+                self.setRowHidden(row, False)
+            else:
+                matches = self._filter_text in title or self._filter_text in album
+                self.setRowHidden(row, not matches)
