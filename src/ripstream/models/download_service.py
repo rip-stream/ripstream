@@ -1,22 +1,155 @@
 # Copyright (c) 2025 ripstream and contributors. All rights reserved.
 # Licensed under the MIT license. See LICENSE file in the project root for details.
 
-"""Service layer for download database operations."""
+"""Service layer for downloads and favorites database operations."""
+
+from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 from sqlalchemy import and_, desc, func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from ripstream.config.user import UserConfig
 from ripstream.models.database import (
     DownloadHistory,
     DownloadRecord,
     DownloadSession,
+    FavoriteArtist,
 )
 from ripstream.models.db_manager import get_downloads_db
 from ripstream.models.enums import DownloadStatus, MediaType, StreamingSource
+
+
+class FavoritesService:
+    """High-level operations for managing favorite artists."""
+
+    def __init__(self) -> None:
+        self.db = get_downloads_db()
+
+    def add_favorite_artist(
+        self,
+        *,
+        source: StreamingSource,
+        artist_id: str,
+        name: str,
+        artist_url: str | None,
+        photo_url: str | None,
+    ) -> bool:
+        """Insert a favorite artist if not already present.
+
+        Returns True if inserted or existed, False if a DB error occurred.
+        """
+        try:
+            with self.db.get_session() as session:
+                # Upsert-like behavior: check existence first
+                existing = session.scalar(
+                    select(FavoriteArtist).where(
+                        FavoriteArtist.source == source,
+                        FavoriteArtist.source_artist_id == artist_id,
+                    )
+                )
+                if existing:
+                    # Update any changed fields for freshness
+                    changed = False
+                    if name and existing.name != name:
+                        existing.name = name
+                        changed = True
+                    if artist_url and existing.artist_url != artist_url:
+                        existing.artist_url = artist_url
+                        changed = True
+                    if photo_url and existing.photo_url != photo_url:
+                        existing.photo_url = photo_url
+                        changed = True
+                    if changed:
+                        session.add(existing)
+                    session.commit()
+                    return True
+
+                fav = FavoriteArtist(
+                    source=source,
+                    source_artist_id=artist_id,
+                    name=name,
+                    artist_url=artist_url,
+                    photo_url=photo_url,
+                )
+                session.add(fav)
+                session.commit()
+                return True
+        except SQLAlchemyError:
+            return False
+
+    def list_favorites(self) -> list[dict[str, Any]]:
+        """Return all favorite artists as dictionaries sorted by name."""
+        try:
+            with self.db.get_session() as session:
+                rows: Iterable[FavoriteArtist] = session.scalars(
+                    select(FavoriteArtist).order_by(FavoriteArtist.name.asc())
+                )
+                return [
+                    {
+                        "id": fav.id,
+                        "source": fav.source,
+                        "artist_id": fav.source_artist_id,
+                        "name": fav.name,
+                        "artist_url": fav.artist_url,
+                        "photo_url": fav.photo_url,
+                    }
+                    for fav in rows
+                ]
+        except SQLAlchemyError:
+            return []
+
+    def is_favorite(self, source: StreamingSource, artist_id: str) -> bool:
+        """Check if an artist is already in favorites."""
+        try:
+            with self.db.get_session() as session:
+                existing = session.scalar(
+                    select(FavoriteArtist).where(
+                        FavoriteArtist.source == source,
+                        FavoriteArtist.source_artist_id == artist_id,
+                    )
+                )
+                return existing is not None
+        except SQLAlchemyError:
+            return False
+
+    def remove_favorite(self, source: StreamingSource, artist_id: str) -> bool:
+        """Remove a favorite artist by source and artist id."""
+        try:
+            with self.db.get_session() as session:
+                fav = session.scalar(
+                    select(FavoriteArtist).where(
+                        FavoriteArtist.source == source,
+                        FavoriteArtist.source_artist_id == artist_id,
+                    )
+                )
+                if not fav:
+                    return True
+                session.delete(fav)
+                session.commit()
+                return True
+        except SQLAlchemyError:
+            return False
+
+    def remove_favorite_by_id(self, favorite_id: str) -> bool:
+        """Remove a favorite artist by its internal ID."""
+        try:
+            with self.db.get_session() as session:
+                fav = session.get(FavoriteArtist, favorite_id)
+                if not fav:
+                    return True
+                session.delete(fav)
+                session.commit()
+                return True
+        except SQLAlchemyError:
+            return False
+
 
 logger = logging.getLogger(__name__)
 

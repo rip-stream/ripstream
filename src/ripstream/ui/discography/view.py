@@ -6,7 +6,7 @@
 from typing import Any
 
 import qtawesome as qta
-from PyQt6.QtCore import QTimer, pyqtSignal
+from PyQt6.QtCore import QSize, QTimer, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -14,15 +14,21 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QStackedWidget,
     QToolButton,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
 
 from ripstream.ui.discography.grid_view import AlbumArtGridView
 from ripstream.ui.discography.list_view import DiscographyListView
+
+# SCREAMING CONSTANTS for favorites flyout icon sizing
+FAVORITES_ICON_WIDTH_PX = 50
+FAVORITES_ICON_HEIGHT_PX = 50
 
 
 class DiscographyView(QWidget):
@@ -31,6 +37,8 @@ class DiscographyView(QWidget):
     item_selected = pyqtSignal(str)  # item_id
     download_requested = pyqtSignal(dict)  # item_details
     view_changed = pyqtSignal(str)  # view_type
+    favorites_open_requested = pyqtSignal(dict)  # data for opening a favorite
+    favorites_remove_requested = pyqtSignal(dict)  # data for removing a favorite
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -168,7 +176,7 @@ class DiscographyView(QWidget):
         sort_divider.setFrameShape(QFrame.Shape.VLine)
         sort_divider.setFrameShadow(QFrame.Shadow.Sunken)
         controls_layout.addWidget(sort_divider)
-        # Search input with debounce
+        # Search & favorites controls
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search albums or tracks…")
         from contextlib import suppress
@@ -177,12 +185,31 @@ class DiscographyView(QWidget):
             # Older bindings may not support it
             self.search_input.setClearButtonEnabled(True)
         controls_layout.addWidget(self.search_input)
+
+        # Add stretch between search and favorites actions
+        controls_layout.addStretch()
+
+        # Favorites toggle button (Add/Remove)
+        self.favorite_toggle_btn = QPushButton(" Add to favorites")
+        self.favorite_toggle_btn.setIcon(qta.icon("fa5s.star"))
+        self.favorite_toggle_btn.setEnabled(False)
+        # External handler will connect to clicked
+        controls_layout.addWidget(self.favorite_toggle_btn)
+
+        # Favorites flyout button with a gallery of thumbnails
+        self.favorites_btn = QToolButton()
+        self.favorites_btn.setText("Favorites")
+        self.favorites_btn.setIcon(qta.icon("fa5s.heart"))
+        self.favorites_btn.setCheckable(True)
+        self.favorites_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.favorites_menu = QMenu(self)
+        self.favorites_btn.setMenu(self.favorites_menu)
+        controls_layout.addWidget(self.favorites_btn)
         # Debounce timer
         self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.timeout.connect(self._on_search_debounced)
         self.search_input.textChanged.connect(self._on_search_text_changed)
-        controls_layout.addStretch()
 
         layout.addLayout(controls_layout)
 
@@ -217,6 +244,70 @@ class DiscographyView(QWidget):
 
         # Initialize sort UI state
         self._update_sort_ui()
+
+    # --- Favorites helpers ---
+    def update_favorite_toggle(
+        self, *, is_favorite: bool, enabled: bool = True
+    ) -> None:
+        """Update the label and enabled state of the favorites toggle button."""
+        if not hasattr(self, "favorite_toggle_btn") or not self.favorite_toggle_btn:
+            return
+        self.favorite_toggle_btn.setEnabled(bool(enabled))
+        self.favorite_toggle_btn.setText(
+            " Remove from favorites" if is_favorite else " Add to favorites"
+        )
+
+    def populate_favorites_menu(self, items: list[dict[str, Any]]) -> None:
+        """Populate the Favorites menu with a thumbnail gallery only."""
+        self.favorites_menu.clear()
+        from PyQt6.QtGui import QIcon, QPixmap
+
+        gallery = QWidget()
+        layout = QHBoxLayout(gallery)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
+
+        # Create a thumb for each favorite
+        for fav in items:
+            name = str(fav.get("name", "Artist"))
+            btn = QToolButton()
+            btn.setAutoRaise(True)
+            btn.setToolTip(name)
+            btn.setIconSize(QSize(FAVORITES_ICON_WIDTH_PX, FAVORITES_ICON_HEIGHT_PX))
+
+            icon = QIcon()
+            pixmap: QPixmap | None = None
+            # Pixmap may be populated by earlier artwork_ready events. If not present,
+            # try to infer from a photo_url field.
+            if isinstance(fav.get("pixmap"), QPixmap):
+                pixmap = fav["pixmap"]
+            if pixmap and not pixmap.isNull():
+                icon = QIcon(pixmap)
+            else:
+                icon = qta.icon("fa5s.user")
+            btn.setIcon(icon)
+
+            data_open = {
+                "source": fav.get("source"),
+                "artist_id": fav.get("artist_id"),
+                "artist_url": fav.get("artist_url"),
+                "name": name,
+                "favorite_id": fav.get("id"),
+            }
+            btn.clicked.connect(
+                lambda _=False, d=data_open: self.favorites_open_requested.emit(d)
+            )
+            layout.addWidget(btn)
+
+        # If empty, show a placeholder label
+        if layout.count() == 0:
+            placeholder = QLabel("No favorites yet")
+            placeholder.setStyleSheet("color: #777; padding: 6px;")
+            layout.addWidget(placeholder)
+
+        action = QWidgetAction(self.favorites_menu)
+        action.setDefaultWidget(gallery)
+        self.favorites_menu.addAction(action)
 
     def switch_view(self, view_type: str):
         """Switch between grid and list views."""

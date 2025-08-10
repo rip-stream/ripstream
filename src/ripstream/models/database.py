@@ -29,6 +29,43 @@ class Base(DeclarativeBase):
     """Base class for all database models."""
 
 
+class FavoriteArtist(Base):
+    """User's favorite artists with optional photo URL for quick listing."""
+
+    __tablename__ = "favorite_artists"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+
+    # Source identification
+    source: Mapped[StreamingSource] = mapped_column(
+        Enum(StreamingSource), nullable=False
+    )
+    source_artist_id: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # Basic metadata
+    name: Mapped[str] = mapped_column(String(500), nullable=False)
+    artist_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    photo_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "source", "source_artist_id", name="uq_favorite_artist_source_id"
+        ),
+    )
+
+
 class DownloadSession(Base):
     """Represents a download session (e.g., downloading all albums from an artist)."""
 

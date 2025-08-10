@@ -121,6 +121,17 @@ class MetadataFetcher(QThread):
             if content_type == "artist":
                 # Emit initial artist metadata to set up the UI, then albums stream individually
                 self.metadata_fetched.emit(metadata_result.data)
+                # Also fetch the main artist artwork thumbnail so UI can show artist avatars
+                from contextlib import suppress
+
+                artist_info = metadata_result.data.get("artist_info", {})
+                with suppress(Exception):
+                    if isinstance(artist_info, dict) and artist_info.get(
+                        "artwork_thumbnail"
+                    ):
+                        await self._fetch_single_artwork(
+                            artist_info, "artwork_thumbnail"
+                        )
             else:
                 await self._fetch_artwork(metadata_result.data)
                 self.metadata_fetched.emit(metadata_result.data)

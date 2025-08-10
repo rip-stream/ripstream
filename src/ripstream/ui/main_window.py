@@ -5,12 +5,16 @@
 
 import logging
 import sys
+from dataclasses import dataclass
 
 from PyQt6.QtGui import QAction, QCloseEvent, QKeySequence
 from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox
 
 from ripstream.config.user import UserConfig
-from ripstream.core.url_parser import URLParser, parse_music_url
+from ripstream.core.url_parser import ParsedURL, URLParser, parse_music_url
+from ripstream.downloader.enums import ContentType
+from ripstream.models.download_service import FavoritesService
+from ripstream.models.enums import StreamingSource
 from ripstream.ui.config_manager import ConfigManager
 from ripstream.ui.download_handler import DownloadHandler
 from ripstream.ui.metadata_service import MetadataService
@@ -36,6 +40,9 @@ class MainWindow(QMainWindow):
         self.url_parser = URLParser()
         self.metadata_service = MetadataService(self.config)
         self._connect_metadata_signals()
+        # Cache of current artist context for favorites
+        self._current_artist_name: str | None = None
+        self._current_artist_photo_url: str | None = None
 
         # Setup UI
         self.setWindowTitle("Ripstream - Music Downloader")
@@ -57,6 +64,7 @@ class MainWindow(QMainWindow):
 
         # Connect UI signals to handlers
         self._connect_ui_signals()
+        self._setup_favorites_integration()
 
         # Setup menus and restore geometry
         self.setup_menus()
@@ -287,6 +295,9 @@ class MainWindow(QMainWindow):
                 parsed_result, artist_item_filter=artist_filter
             )
 
+            # Enable/disable Add to favorites depending on content type
+            self._update_add_favorite_enabled(parsed_result)
+
         except (ValueError, AttributeError, RuntimeError) as e:
             self.ui_manager.update_status(f"Error processing URL: {e!s}")
             self.ui_manager.set_loading_state(False)
@@ -441,8 +452,37 @@ class MainWindow(QMainWindow):
                     f"with {len(items)} tracks from {service}"
                 )
             elif content_type == "artist" and "artist_info" in metadata:
-                msg = f"Loaded {metadata['artist_info']['total_items']} items by '{metadata['artist_info']['name']}' from {service}"
+                # Cache artist context for favorites
+                ai = metadata["artist_info"]
+                self._current_artist_name = ai.get("name") or None
+                # Prefer artwork_thumbnail if present
+                self._current_artist_photo_url = (
+                    ai.get("artwork_thumbnail")
+                    or ai.get("picture_small")
+                    or ai.get("image")
+                    or None
+                )
+                msg = f"Loaded {ai.get('total_items', 0)} items by '{ai.get('name', 'Artist')}' from {service}"
                 self.ui_manager.update_status(msg)
+                # If this artist was just added to favorites earlier with a stale name,
+                # update the favorite entry now that we have authoritative metadata.
+                parsed = self.metadata_service.get_last_parsed_url()
+                if (
+                    parsed
+                    and parsed.content_type == ContentType.ARTIST
+                    and self.favorites_service.is_favorite(
+                        parsed.service, str(parsed.content_id)
+                    )
+                ):
+                    # Upsert will refresh name/photo_url without creating a new entry
+                    self.favorites_service.add_favorite_artist(
+                        source=parsed.service,
+                        artist_id=str(parsed.content_id),
+                        name=self._current_artist_name or "Artist",
+                        artist_url=parsed.url,
+                        photo_url=self._current_artist_photo_url,
+                    )
+                    self._refresh_favorites_menu()
             elif content_type == "playlist" and "playlist_info" in metadata:
                 # For playlists we stream albums progressively; items may be empty here
                 pl_info = metadata["playlist_info"]
@@ -476,6 +516,16 @@ class MainWindow(QMainWindow):
         except Exception:
             logger.exception("Failed to save session snapshot after metadata")
 
+        # Populate favorites list on metadata arrival (keeps it fresh)
+        self._refresh_favorites_menu()
+        # Also reevaluate Add to favorites state
+        from contextlib import suppress
+
+        with suppress(Exception):
+            self._update_add_favorite_enabled(
+                self.metadata_service.get_last_parsed_url()
+            )
+
     def handle_album_ready(self, album_metadata: dict):
         """Handle individual album fetched during streaming."""
         try:
@@ -508,6 +558,219 @@ class MainWindow(QMainWindow):
         discography_view = self.ui_manager.get_discography_view()
         if discography_view:
             discography_view.update_item_artwork(item_id, pixmap)
+
+    # --- Favorites integration ---
+    def _setup_favorites_integration(self) -> None:
+        self.favorites_service = FavoritesService()
+        view = self.ui_manager.get_discography_view()
+        if not view:
+            return
+        # Hook favorites menu actions
+        if hasattr(view, "favorites_menu"):
+            view.favorites_menu.triggered.connect(self._on_favorite_selected)
+        # Connect custom row signals
+        if hasattr(view, "favorites_open_requested"):
+            view.favorites_open_requested.connect(
+                lambda d: self._on_favorite_selected(_ActionData(d))
+            )
+        if hasattr(view, "favorites_remove_requested"):
+            view.favorites_remove_requested.connect(
+                lambda d: self._on_favorite_selected(_ActionData(d))
+            )
+        # Hook Favorites toggle button
+        if hasattr(view, "favorite_toggle_btn"):
+            view.favorite_toggle_btn.clicked.connect(self._on_favorite_toggle_clicked)
+        # Populate favorites on startup
+        self._refresh_favorites_menu()
+
+    def _update_add_favorite_enabled(self, parsed_result: ParsedURL | None) -> None:
+        view = self.ui_manager.get_discography_view()
+        if not view:
+            return
+        enabled = bool(
+            parsed_result and parsed_result.content_type == ContentType.ARTIST
+        )
+        # Determine favorite state regardless of enabled
+        is_fav = False
+        if parsed_result:
+            from contextlib import suppress
+
+            with suppress(Exception):
+                is_fav = self.favorites_service.is_favorite(
+                    parsed_result.service, str(parsed_result.content_id)
+                )
+        # If already a favorite, ensure the toggle is enabled to allow removal
+        if is_fav:
+            enabled = True
+        # Update button UI
+        if hasattr(view, "update_favorite_toggle"):
+            view.update_favorite_toggle(is_favorite=is_fav, enabled=enabled)
+
+    def _refresh_favorites_menu(self) -> None:
+        view = self.ui_manager.get_discography_view()
+        if not view:
+            return
+        items = self.favorites_service.list_favorites()
+        # Attempt to attach pixmaps for favorites from current pending artwork cache or local cache
+        pending = getattr(view, "pending_artwork", {}) or {}
+        import hashlib
+        from pathlib import Path
+
+        from PyQt6.QtGui import QPixmap
+
+        cache_dir = Path.home() / ".cache" / "ripstream"
+        for fav in items:
+            artist_id = str(fav.get("artist_id") or "")
+            photo_url = fav.get("photo_url") or ""
+            pixmap: QPixmap | None = None
+            # 1) From in-memory pending artwork (set by artwork_ready)
+            if artist_id and artist_id in pending:
+                pixmap = pending.get(artist_id)
+            # 2) From on-disk cache used by MetadataFetcher (if URL known)
+            if (
+                (not pixmap or pixmap.isNull())
+                and isinstance(photo_url, str)
+                and photo_url
+            ):
+                url_hash = hashlib.sha256(photo_url.encode()).hexdigest()
+                cache_file = cache_dir / f"artwork_{url_hash}.jpg"
+                if cache_file.exists():
+                    pm = QPixmap(str(cache_file))
+                    if pm and not pm.isNull():
+                        pixmap = pm
+
+            if pixmap and not pixmap.isNull():
+                fav["pixmap"] = pixmap
+
+        view.populate_favorites_menu(items)
+
+    def _on_favorite_selected(self, action) -> None:
+        try:
+            data = self._extract_action_payload(action)
+            if data.get("remove"):
+                removed = self._remove_favorite_via_data(data)
+                if removed:
+                    self.ui_manager.update_status("Removed favorite artist")
+                    self._refresh_favorites_menu()
+                    self._update_add_favorite_enabled(
+                        self.metadata_service.get_last_parsed_url()
+                    )
+                else:
+                    self.ui_manager.update_status("Failed to remove favorite artist")
+                return
+            self._open_favorite_from_data(data)
+        except (ValueError, AttributeError, RuntimeError, KeyError) as e:
+            logger.warning("Failed to open or modify favorite: %s", e)
+
+    def _extract_action_payload(self, action) -> dict:
+        data: dict = {}
+        if hasattr(action, "data") and callable(action.data):
+            data = action.data() or {}
+        elif hasattr(action, "payload"):
+            data = getattr(action, "payload", {}) or {}
+        return data
+
+    def _remove_favorite_via_data(self, data: dict) -> bool:
+        fav_id = data.get("favorite_id")
+        source = data.get("source")
+        artist_id = data.get("artist_id")
+        if fav_id:
+            return self.favorites_service.remove_favorite_by_id(str(fav_id))
+        if source and artist_id:
+            try:
+                service = (
+                    source
+                    if isinstance(source, StreamingSource)
+                    else StreamingSource(str(source))
+                )
+            except ValueError:
+                service = StreamingSource.QOBUZ
+            return self.favorites_service.remove_favorite(service, str(artist_id))
+        return False
+
+    def _open_favorite_from_data(self, data: dict) -> None:
+        artist_id = data.get("artist_id")
+        source = data.get("source")
+        if not artist_id or not source:
+            return
+        try:
+            service = (
+                source
+                if isinstance(source, StreamingSource)
+                else StreamingSource(str(source))
+            )
+        except ValueError:
+            service = StreamingSource.QOBUZ
+
+        parsed = ParsedURL(
+            service=service,
+            content_type=ContentType.ARTIST,
+            content_id=str(artist_id),
+            url=f"{service.value}://artist/{artist_id}",
+            metadata={},
+        )
+        navbar = self.ui_manager.get_navbar()
+        artist_filter = None
+        if navbar and hasattr(navbar, "url_widget"):
+            artist_filter = navbar.url_widget.get_artist_filter()
+        self.ui_manager.update_status(
+            f"Refreshing favorites: {data.get('name', 'Artist')}"
+        )
+        self.ui_manager.switch_to_view("discography")
+        discography_view = self.ui_manager.get_discography_view()
+        if discography_view:
+            discography_view.clear_all()
+        self.metadata_service.fetch_metadata(parsed, artist_item_filter=artist_filter)
+        self._update_add_favorite_enabled(parsed)
+
+    def add_current_artist_to_favorites(self) -> None:
+        """Add the currently viewed artist to favorites if possible."""
+        parsed = self.metadata_service.get_last_parsed_url()
+        if not parsed or parsed.content_type != ContentType.ARTIST:
+            return
+        # Try to extract artist info from the most recent metadata in the view snapshot
+        # Fallback to minimal data if necessary
+        name = self._current_artist_name or "Artist"
+        photo_url = self._current_artist_photo_url
+        artist_url = parsed.url
+        # We rely on last metadata delivered to view; if present later we can refine
+        # Use service and content id from parsed URL
+        success = self.favorites_service.add_favorite_artist(
+            source=parsed.service,
+            artist_id=str(parsed.content_id),
+            name=name,
+            artist_url=artist_url,
+            photo_url=photo_url,
+        )
+        if success:
+            self.ui_manager.update_status("Added artist to favorites")
+            self._refresh_favorites_menu()
+            # Disable the add button after adding
+            self._update_add_favorite_enabled(parsed)
+        else:
+            self.ui_manager.update_status("Failed to add favorite artist")
+
+    def _on_favorite_toggle_clicked(self) -> None:
+        """Toggle Add/Remove based on current favorite state for artist context."""
+        parsed = self.metadata_service.get_last_parsed_url()
+        if not parsed or parsed.content_type != ContentType.ARTIST:
+            return
+        is_fav = self.favorites_service.is_favorite(
+            parsed.service, str(parsed.content_id)
+        )
+        if is_fav:
+            removed = self.favorites_service.remove_favorite(
+                parsed.service, str(parsed.content_id)
+            )
+            if removed:
+                self.ui_manager.update_status("Removed favorite artist")
+                self._refresh_favorites_menu()
+            else:
+                self.ui_manager.update_status("Failed to remove favorite artist")
+        else:
+            self.add_current_artist_to_favorites()
+        # Update toggle state
+        self._update_add_favorite_enabled(parsed)
 
     def handle_metadata_progress(self, progress: int, message: str):
         """Handle metadata fetching progress updates."""
@@ -559,7 +822,6 @@ class MainWindow(QMainWindow):
 
         # Capture navbar state (filter index)
         filter_index = None
-        filter_index = None
         url_widget = getattr(navbar, "url_widget", None)
         dropdown = getattr(url_widget, "filter_dropdown", None)
         if hasattr(dropdown, "currentIndex") and callable(dropdown.currentIndex):
@@ -599,6 +861,23 @@ class MainWindow(QMainWindow):
         self._restore_main_view(state)
         self._restore_downloads_scroll(state)
 
+        # After restoring visual state, update the favorites toggle label/enabled
+        # using the last URL if present (no network call required).
+        try:
+            last_url = state.get("last_url")
+            if isinstance(last_url, str) and last_url.strip():
+                parsed_result = parse_music_url(last_url.strip())
+                if getattr(parsed_result, "is_valid", False):
+                    self._update_add_favorite_enabled(parsed_result)
+                else:
+                    # Even if parsing fails, try to evaluate against stored favorites by URL id hint
+                    self._update_add_favorite_enabled(None)
+            else:
+                self._update_add_favorite_enabled(None)
+        except (ValueError, AttributeError, RuntimeError) as e:
+            # Do not block UI on restore if anything goes wrong here
+            logger.warning("Failed to update favorites toggle during restore: %s", e)
+
     def _restore_navbar_state(self, navbar, state: dict) -> None:
         if state.get("last_url"):
             navbar.set_url(state["last_url"])
@@ -633,6 +912,13 @@ class MainWindow(QMainWindow):
         scroll_val = state.get("downloads_scroll")
         if isinstance(scroll_val, int):
             downloads_view.downloads_table.verticalScrollBar().setValue(scroll_val)
+
+
+@dataclass
+class _ActionData:
+    """Lightweight adapter to pass payloads through existing handler."""
+
+    payload: dict
 
 
 def main():
