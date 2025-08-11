@@ -121,6 +121,8 @@ class DownloadHandler(QObject):
             "started_at": datetime.now(UTC),
             "completed_at": None,
             "album_id": item_details.get("album_id"),
+            # pass-through of technical audio info from metadata providers when present
+            "audio_info": item_details.get("audio_info"),
         }
 
     def _handle_download_started(self, _download_id: str, item_details: dict):

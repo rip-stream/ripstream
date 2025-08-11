@@ -260,6 +260,12 @@ class DownloadRecord(Base):
     session: Mapped["DownloadSession | None"] = relationship(
         "DownloadSession", back_populates="downloads"
     )
+    audio_info: Mapped["DownloadAudioInfo | None"] = relationship(
+        "DownloadAudioInfo",
+        back_populates="download",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     # Unique constraint to prevent duplicate downloads
     __table_args__ = (
@@ -437,6 +443,49 @@ class DownloadHistory(Base):
         self.file_exists = exists
         self.last_verified_at = datetime.now(UTC)
         return exists
+
+
+class DownloadAudioInfo(Base):
+    """Technical audio information linked to a download record (1:1)."""
+
+    __tablename__ = "download_audio_info"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # Foreign key to download record
+    download_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("download_records.id", ondelete="CASCADE"), unique=True
+    )
+
+    # Technical fields copied from models.audio.AudioInfo
+    quality: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )  # AudioQuality enum value
+    bit_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sampling_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bitrate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    codec: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    container: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    file_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_lossless: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_explicit: Mapped[bool] = mapped_column(Boolean, default=False)
+    channels: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+    # Relationship back to download
+    download: Mapped["DownloadRecord"] = relationship(
+        "DownloadRecord", back_populates="audio_info"
+    )
 
 
 class UISessionState(Base):

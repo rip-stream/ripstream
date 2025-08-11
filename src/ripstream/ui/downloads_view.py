@@ -484,6 +484,7 @@ class DownloadsHistoryView(QWidget):
                 source_url=download_data.get("source_url"),
                 session_id=download_data.get("session_id"),
                 album_id=download_data.get("album_id"),
+                audio_info=download_data.get("audio_info"),
             )
 
             if download_id:

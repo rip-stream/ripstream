@@ -5,6 +5,7 @@
 
 import logging
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
@@ -30,6 +31,7 @@ from ripstream.downloader.qobuz.models import (
     QobuzTrackResponse,
 )
 from ripstream.downloader.session import SessionManager
+from ripstream.metadata.tagger import probe_audio_file
 from ripstream.models.album import Album
 from ripstream.models.artist import Artist
 from ripstream.models.artwork import Covers
@@ -974,31 +976,109 @@ class QobuzDownloader(BaseDownloader):
 
         return safe_name.strip()
 
+    def _is_audio_file(self, file_path: str) -> bool:
+        """Return True if the path points to a supported audio file."""
+        suffix = Path(file_path).suffix.lower()
+        return suffix in {".flac", ".mp3", ".m4a", ".mp4", ".aac"}
+
+    def _get_source_settings(self) -> dict[str, Any]:
+        """Return source settings for post-processing with a safe default."""
+        return self.config.source_settings.get("default", {})
+
+    async def _maybe_prepare_cover(
+        self, content_id: str, file_path: str, source_settings: dict[str, Any]
+    ) -> str | None:
+        embed_artwork = source_settings.get("embed_artwork", True)
+        if not embed_artwork:
+            return None
+        return await self._prepare_artwork_for_embedding(
+            content_id, file_path, source_settings
+        )
+
+    async def _embed_tags_and_art(
+        self,
+        file_path: str,
+        track_metadata: dict[str, Any] | None,
+        cover_path: str | None,
+        embed_metadata: bool,
+        embed_artwork: bool,
+    ) -> None:
+        if not (embed_metadata or embed_artwork):
+            return
+        from ripstream.metadata import tag_file
+
+        if embed_metadata and track_metadata:
+            await tag_file(file_path, track_metadata, cover_path)
+            logger.info("Successfully embedded metadata and artwork for: %s", file_path)
+            return
+        if embed_artwork and cover_path:
+            await tag_file(file_path, {}, cover_path)
+            logger.info("Successfully embedded artwork for: %s", file_path)
+
+    def _update_db_with_probe(
+        self, content: DownloadableContent, file_path: str, probed: dict[str, Any]
+    ) -> None:
+        from sqlalchemy import and_, select
+
+        from ripstream.models.database import DownloadAudioInfo, DownloadRecord
+        from ripstream.models.download_service import get_download_service
+        from ripstream.models.enums import MediaType, StreamingSource
+
+        download_service = get_download_service()
+        with download_service.downloads_db.get_session() as session:
+            stmt = select(DownloadRecord).where(
+                and_(
+                    DownloadRecord.source == StreamingSource(self.source_name),
+                    DownloadRecord.source_id == content.content_id,
+                    DownloadRecord.media_type == MediaType.TRACK,
+                )
+            )
+            record = session.execute(stmt).scalar_one_or_none()
+            if not record:
+                return
+
+            record.file_path = file_path
+            with suppress(OSError):
+                record.file_size_bytes = Path(file_path).stat().st_size
+
+            audio_info = getattr(record, "audio_info", None)
+            if audio_info is None:
+                audio_info = DownloadAudioInfo(download_id=record.id)
+                session.add(audio_info)
+
+            audio_info.quality = probed.get("quality")
+            audio_info.bit_depth = probed.get("bit_depth")
+            audio_info.sampling_rate = probed.get("sampling_rate")
+            audio_info.bitrate = probed.get("bitrate")
+            audio_info.codec = probed.get("codec")
+            audio_info.container = probed.get("container")
+            audio_info.duration_seconds = probed.get("duration_seconds")
+            audio_info.file_size_bytes = probed.get("file_size_bytes")
+            audio_info.is_lossless = probed.get("is_lossless")
+            audio_info.is_explicit = bool(probed.get("is_explicit"))
+            audio_info.channels = probed.get("channels")
+
+            session.commit()
+
     async def _postprocess_downloaded_file(
         self, content: DownloadableContent, file_path: str
     ) -> None:
         """Post-process downloaded audio file with metadata and artwork embedding."""
-        # Only process audio files, skip artwork and booklets
         if content.content_type != ContentType.TRACK:
             return
 
-        # Skip if file doesn't exist or isn't an audio file
         if not Path(file_path).exists():
             logger.warning(
                 "Downloaded file not found for post-processing: %s", file_path
             )
             return
 
-        file_ext = Path(file_path).suffix.lower()
-        if file_ext not in [".flac", ".mp3", ".m4a", ".mp4", ".aac"]:
+        if not self._is_audio_file(file_path):
             logger.debug("Skipping post-processing for non-audio file: %s", file_path)
             return
 
         try:
-            # Get source settings for metadata and artwork configuration
-            source_settings = self.config.source_settings.get("default", {})
-
-            # Check if metadata embedding is enabled
+            source_settings = self._get_source_settings()
             embed_metadata = source_settings.get("embed_metadata", True)
             embed_artwork = source_settings.get("embed_artwork", True)
 
@@ -1008,32 +1088,24 @@ class QobuzDownloader(BaseDownloader):
                 )
                 return
 
-            # Get track metadata for embedding
             track_metadata = await self._get_track_metadata_for_embedding(
                 content.content_id
             )
+            cover_path = await self._maybe_prepare_cover(
+                content.content_id, file_path, source_settings
+            )
 
-            # Download and prepare artwork if embedding is enabled
-            cover_path = None
-            if embed_artwork:
-                cover_path = await self._prepare_artwork_for_embedding(
-                    content.content_id, file_path, source_settings
-                )
+            await self._embed_tags_and_art(
+                file_path,
+                track_metadata,
+                cover_path,
+                embed_metadata,
+                embed_artwork,
+            )
 
-            # Embed metadata and artwork
-            if embed_metadata and track_metadata:
-                from ripstream.metadata import tag_file
-
-                await tag_file(file_path, track_metadata, cover_path)
-                logger.info(
-                    "Successfully embedded metadata and artwork for: %s", file_path
-                )
-            elif embed_artwork and cover_path:
-                # If only artwork embedding is enabled
-                from ripstream.metadata import tag_file
-
-                await tag_file(file_path, {}, cover_path)
-                logger.info("Successfully embedded artwork for: %s", file_path)
+            probed = probe_audio_file(file_path)
+            if isinstance(probed, dict):
+                self._update_db_with_probe(content, file_path, probed)
 
         except Exception:
             logger.exception("Failed to post-process file %s", file_path)

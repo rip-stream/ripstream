@@ -290,3 +290,122 @@ async def tag_file(
     except Exception:
         logger.exception("Failed to tag audio file %s", file_path)
         raise
+
+
+def _unsupported_container_info(ext: str, p: Path) -> dict[str, Any]:
+    try:
+        return {
+            "container": ext.upper() if ext else None,
+            "file_size_bytes": p.stat().st_size,
+        }
+    except OSError:
+        return {}
+
+
+def _load_audio_by_ext(ext: str, p: Path) -> tuple[Any | None, str | None]:
+    if ext == "flac":
+        try:
+            return FLAC(str(p)), "FLAC"
+        except Exception:  # noqa: BLE001
+            return None, "FLAC"
+    if ext in ("m4a", "mp4", "aac"):
+        try:
+            return MP4(str(p)), ("AAC" if ext == "aac" else "MP4/M4A")
+        except Exception:  # noqa: BLE001
+            return None, ("AAC" if ext == "aac" else "MP4/M4A")
+    if ext == "mp3":
+        try:
+            from mutagen.mp3 import MP3 as MUTAGEN_MP3
+
+            return MUTAGEN_MP3(str(p)), "MP3"
+        except Exception:  # noqa: BLE001
+            # Fallback to tag-only reader; if that fails too, mark as MP3 with no audio object
+            try:
+                return ID3(str(p)), "MP3"
+            except Exception:  # noqa: BLE001
+                return None, "MP3"
+    return None, None
+
+
+def _calculate_bitrate_kbps(
+    info: Any, duration_seconds: float | None, file_size_bytes: int | None
+) -> int | None:
+    bit_rate_bps = getattr(info, "bitrate", None)
+    if isinstance(bit_rate_bps, (int, float)) and bit_rate_bps > 0:
+        return round(bit_rate_bps / 1000.0)
+    if duration_seconds and file_size_bytes and duration_seconds > 0:
+        return round((file_size_bytes * 8) / duration_seconds / 1000.0)
+    return None
+
+
+def _is_lossless(codec: str | None) -> bool | None:
+    if codec in {"FLAC", "WAV", "ALAC"}:
+        return True
+    if codec in {"MP3", "AAC", "MP4/M4A"}:
+        return False
+    return None
+
+
+def probe_audio_file(file_path: str) -> dict[str, Any]:
+    """Probe an audio file to extract technical information.
+
+    Returns a dictionary compatible with DownloadAudioInfo fields:
+    - quality: None (unknown here)
+    - bit_depth: int | None
+    - sampling_rate: float | None (Hz)
+    - bitrate: int | None (kbps)
+    - codec: str | None
+    - container: str | None
+    - duration_seconds: float | None
+    - file_size_bytes: int | None
+    - is_lossless: bool | None
+    - is_explicit: bool (False by default)
+    - channels: not stored in DB currently, but computed here if needed by callers
+    """
+    p = Path(file_path)
+    if not p.exists():
+        return {}
+
+    ext = p.suffix.lower().lstrip(".")
+    audio, codec = _load_audio_by_ext(ext, p)
+    if audio is None:
+        # Return known codec label if available, otherwise fallback to extension
+        try:
+            size = p.stat().st_size
+        except OSError:
+            size = None
+        return {
+            "container": codec if codec is not None else (ext.upper() if ext else None),
+            "file_size_bytes": size,
+        }
+
+    info = getattr(audio, "info", None)
+    try:
+        file_size_bytes = p.stat().st_size
+    except OSError:
+        file_size_bytes = None
+
+    duration_seconds = getattr(info, "length", None)
+    sampling_rate = getattr(info, "sample_rate", None)
+    channels = getattr(info, "channels", None)
+
+    # Bit depth is available for FLAC/WAV via bits_per_sample
+    bit_depth = getattr(info, "bits_per_sample", None)
+
+    return {
+        "quality": None,
+        "bit_depth": int(bit_depth) if isinstance(bit_depth, float) else bit_depth,
+        "sampling_rate": float(sampling_rate)
+        if isinstance(sampling_rate, int)
+        else sampling_rate,
+        "bitrate": _calculate_bitrate_kbps(info, duration_seconds, file_size_bytes),
+        "codec": codec,
+        "container": ext.upper() if ext else None,
+        "duration_seconds": float(duration_seconds)
+        if isinstance(duration_seconds, int)
+        else duration_seconds,
+        "file_size_bytes": file_size_bytes,
+        "is_lossless": _is_lossless(codec),
+        "is_explicit": False,
+        "channels": channels,
+    }

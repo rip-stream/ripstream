@@ -171,6 +171,20 @@ class BaseMetadataProvider(ABC):
             "container": str(track.audio.container)
             if track.audio.container
             else "FLAC",
+            "audio_info": {
+                "quality": int(track.audio.quality)
+                if hasattr(track.audio, "quality") and track.audio.quality is not None
+                else None,
+                "bit_depth": track.audio.bit_depth,
+                "sampling_rate": track.audio.sampling_rate,
+                "bitrate": track.audio.bitrate,
+                "codec": track.audio.codec,
+                "container": track.audio.container,
+                "duration_seconds": track.audio.duration_seconds,
+                "file_size_bytes": track.audio.file_size_bytes,
+                "is_lossless": track.audio.is_lossless,
+                "is_explicit": bool(getattr(track.audio, "is_explicit", False)),
+            },
             "artwork_url": (
                 best_image.url
                 if track.covers
