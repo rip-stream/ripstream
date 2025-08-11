@@ -1103,9 +1103,21 @@ class QobuzDownloader(BaseDownloader):
                 embed_artwork,
             )
 
-            probed = probe_audio_file(file_path)
-            if isinstance(probed, dict):
-                self._update_db_with_probe(content, file_path, probed)
+            # Respect user config toggle: only probe if enabled
+            should_probe = False
+            try:
+                # ConfigManager returns the same config used to create this downloader
+                cfg = ConfigManager().get_config()
+                should_probe = bool(
+                    getattr(cfg.downloads, "probe_audio_technicals", False)
+                )
+            except Exception:  # noqa: BLE001
+                should_probe = False
+
+            if should_probe:
+                probed = probe_audio_file(file_path)
+                if isinstance(probed, dict):
+                    self._update_db_with_probe(content, file_path, probed)
 
         except Exception:
             logger.exception("Failed to post-process file %s", file_path)

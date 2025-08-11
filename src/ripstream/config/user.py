@@ -62,6 +62,13 @@ class DownloadsConfig(BaseConfig):
         default=8192,
         description="Download chunk size in bytes",
     )
+    probe_audio_technicals: bool = Field(
+        default=False,
+        description=(
+            "Probe downloaded files for technical info (bitrate, channels, etc.).\n"
+            "This may be slow for some file types."
+        ),
+    )
 
     @field_validator("max_connections", "requests_per_minute")
     @classmethod

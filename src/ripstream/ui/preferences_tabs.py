@@ -459,6 +459,11 @@ class DownloadsTab(BasePreferenceTab):
         self.concurrent_downloads = QCheckBox("Download tracks concurrently")
         behavior_layout.addRow(self.concurrent_downloads)
 
+        self.probe_audio_technicals = QCheckBox(
+            "Probe downloaded files for technical info (slower)"
+        )
+        behavior_layout.addRow(self.probe_audio_technicals)
+
         layout.addWidget(behavior_group)
 
         # Database Settings
@@ -508,6 +513,10 @@ class DownloadsTab(BasePreferenceTab):
         self.requests_per_minute.setValue(self.config.downloads.requests_per_minute)
         self.verify_ssl.setChecked(self.config.downloads.verify_ssl)
         self.concurrent_downloads.setChecked(self.config.downloads.concurrency)
+        # Audio technicals probing
+        self.probe_audio_technicals.setChecked(
+            getattr(self.config.downloads, "probe_audio_technicals", False)
+        )
 
         self.track_downloads.setChecked(self.config.database.downloads_enabled)
         self.downloads_db_path.setText(str(self.config.database.database_path))
@@ -527,6 +536,9 @@ class DownloadsTab(BasePreferenceTab):
         self.config.downloads.requests_per_minute = self.requests_per_minute.value()
         self.config.downloads.verify_ssl = self.verify_ssl.isChecked()
         self.config.downloads.concurrency = self.concurrent_downloads.isChecked()
+        self.config.downloads.probe_audio_technicals = (
+            self.probe_audio_technicals.isChecked()
+        )
 
         self.config.database.downloads_enabled = self.track_downloads.isChecked()
         self.config.database.database_path = Path(self.downloads_db_path.text())
