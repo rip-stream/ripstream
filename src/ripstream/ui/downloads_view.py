@@ -7,17 +7,21 @@ from typing import Any
 
 import qtawesome as qta
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont, QFontMetrics
+from PyQt6.QtGui import QAction, QFont, QFontMetrics
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
+    QFormLayout,
     QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -147,6 +151,7 @@ class DownloadsTableWidget(QTableWidget):
 
     retry_requested = pyqtSignal(str)  # download_id
     remove_requested = pyqtSignal(str)  # download_id
+    info_requested = pyqtSignal(str)  # download_id
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -195,6 +200,37 @@ class DownloadsTableWidget(QTableWidget):
         header.setSectionResizeMode(
             7, QHeaderView.ResizeMode.ResizeToContents
         )  # Actions
+
+        # Enable custom context menu
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
+
+    def _show_context_menu(self, pos) -> None:
+        # Determine the row at the click position
+        global_pos = self.viewport().mapToGlobal(pos)
+        row = self.rowAt(pos.y())
+        if row < 0:
+            return
+        # Retrieve download_id from Title column user data
+        title_item = self.item(row, 0)
+        download_id = None
+        if title_item:
+            download_id = title_item.data(Qt.ItemDataRole.UserRole)
+        if not download_id:
+            # Fallback to status column user data
+            status_item = self.item(row, 4)
+            if status_item:
+                download_id = status_item.data(Qt.ItemDataRole.UserRole)
+        if not download_id:
+            return
+
+        menu = QMenu(self)
+        info_action = QAction("Info...", self)
+        info_action.triggered.connect(
+            lambda: self.info_requested.emit(str(download_id))
+        )
+        menu.addAction(info_action)
+        menu.exec(global_pos)
 
     def add_download_item(self, download_data: dict[str, Any]):
         """Add a download item to the table."""
@@ -389,6 +425,12 @@ class DownloadsHistoryView(QWidget):
         self._speeds_bps: dict[str, float] = {}
         # Map any external IDs provided by callers to the actual DB record IDs stored in the table
         self._id_aliases: dict[str, str] = {}
+        self._current_info_index: int | None = None
+        self._info_dialog: QDialog | None = None
+        self._info_labels: dict[str, QLabel] = {}
+        self._artwork_label: QLabel | None = None
+        self._info_prev_btn: QPushButton | None = None
+        self._info_next_btn: QPushButton | None = None
         self.setup_ui()
         self.setup_timer()
         self.load_downloads()
@@ -442,7 +484,277 @@ class DownloadsHistoryView(QWidget):
         self.downloads_table = DownloadsTableWidget()
         self.downloads_table.retry_requested.connect(self.retry_download.emit)
         self.downloads_table.remove_requested.connect(self.remove_download_item)
+        self.downloads_table.info_requested.connect(self._open_info_dialog_by_id)
         layout.addWidget(self.downloads_table)
+
+    # ---------- Info dialog ----------
+    def _collect_visible_ids(self) -> list[str]:
+        ids: list[str] = []
+        for row in range(self.downloads_table.rowCount()):
+            item = self.downloads_table.item(row, 0)
+            download_id = item.data(Qt.ItemDataRole.UserRole) if item else None
+            if download_id:
+                ids.append(str(download_id))
+        return ids
+
+    def _open_info_dialog_by_id(self, download_id: str) -> None:
+        ids = self._collect_visible_ids()
+        try:
+            self._current_info_index = ids.index(download_id)
+        except ValueError:
+            self._current_info_index = None
+        self._ensure_info_dialog()
+        self._update_info_dialog(download_id)
+
+    def _navigate_info(self, delta: int) -> None:
+        ids = self._collect_visible_ids()
+        if self._current_info_index is None:
+            return
+        new_index = self._current_info_index + delta
+        if new_index < 0 or new_index >= len(ids):
+            return
+        self._current_info_index = new_index
+        self._update_info_dialog(ids[new_index])
+
+    def _ensure_info_dialog(self) -> None:
+        if self._info_dialog is not None and not self._info_dialog.isHidden():
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Download Info")
+        vlayout = QVBoxLayout(dialog)
+
+        tabs = QTabWidget(dialog)
+        # Info tab setup with labels to update
+        info_tab = QWidget()
+        form = QFormLayout(info_tab)
+
+        def mk(label: str) -> QLabel:
+            ql = QLabel("")
+            form.addRow(label, ql)
+            return ql
+
+        self._info_labels = {
+            "filename": mk("Filename:"),
+            "format": mk("Format:"),
+            "length": mk("Length:"),
+            "bitrate": mk("Bitrate:"),
+            "sample_rate": mk("Sample rate:"),
+            "bits_per_sample": mk("Bits per sample:"),
+            "channels": mk("Channels:"),
+            "album": mk("Album:"),
+            "track_number": mk("Track number:"),
+            "disc_number": mk("Disc number:"),
+        }
+        tabs.addTab(info_tab, "Info")
+
+        # Artwork tab with a persistent label
+        artwork_tab = QWidget()
+        artwork_layout = QVBoxLayout(artwork_tab)
+        self._artwork_label = QLabel("No artwork found")
+        self._artwork_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        artwork_layout.addWidget(self._artwork_label)
+        tabs.addTab(artwork_tab, "Artwork")
+
+        vlayout.addWidget(tabs)
+
+        # Buttons
+        btn_row = QHBoxLayout()
+        self._info_prev_btn = QPushButton("Previous")
+        self._info_next_btn = QPushButton("Next")
+        ok_btn = QPushButton("OK")
+        btn_row.addWidget(self._info_prev_btn)
+        btn_row.addWidget(self._info_next_btn)
+        btn_row.addStretch()
+        btn_row.addWidget(ok_btn)
+        vlayout.addLayout(btn_row)
+
+        self._info_prev_btn.clicked.connect(lambda: self._navigate_info(-1))
+        self._info_next_btn.clicked.connect(lambda: self._navigate_info(1))
+        ok_btn.clicked.connect(dialog.accept)
+
+        def _on_closed(_code: int) -> None:
+            self._info_dialog = None
+            self._info_labels = {}
+            self._artwork_label = None
+            self._info_prev_btn = None
+            self._info_next_btn = None
+
+        dialog.finished.connect(_on_closed)
+
+        self._info_dialog = dialog
+        dialog.show()
+
+    def _update_info_dialog(self, download_id: str) -> None:
+        if self._info_dialog is None:
+            return
+        details = self.download_service.get_download_details(download_id)
+        if not details:
+            return
+
+        self._set_info_labels(details)
+        self._refresh_artwork(details.get("filename") or "")
+
+        # Update nav button states
+        ids = self._collect_visible_ids()
+        if self._current_info_index is not None:
+            if self._info_prev_btn is not None:
+                self._info_prev_btn.setEnabled(self._current_info_index > 0)
+            if self._info_next_btn is not None:
+                self._info_next_btn.setEnabled(self._current_info_index < len(ids) - 1)
+
+    def _set_info_labels(self, details: dict[str, Any]) -> None:
+        def set_text(key: str, value: str) -> None:
+            lbl = self._info_labels.get(key)
+            if lbl is not None:
+                lbl.setText(value)
+
+        set_text("filename", details.get("filename", ""))
+        set_text("format", details.get("format", ""))
+        set_text("length", details.get("length", ""))
+        set_text("bitrate", details.get("bitrate", ""))
+        set_text("sample_rate", details.get("sample_rate", ""))
+        bps = details.get("bits_per_sample")
+        set_text("bits_per_sample", str(bps) if bps is not None else "")
+        set_text("channels", details.get("channels", ""))
+        set_text("album", details.get("album", ""))
+        tn = details.get("track_number")
+        set_text("track_number", str(tn) if tn is not None else "")
+        dn = details.get("disc_number")
+        set_text("disc_number", str(dn) if dn is not None else "")
+
+    def _refresh_artwork(self, file_path: str) -> None:
+        label = self._artwork_label
+        if label is None:
+            return
+
+        from PyQt6.QtGui import QPixmap
+
+        label.setText("No artwork found")
+        label.setPixmap(QPixmap())
+
+        cover_path = self._locate_external_cover(file_path)
+        if cover_path and self._render_image_path_to_label(label, cover_path):
+            return
+
+        embedded_bytes = self._read_embedded_bytes(file_path)
+        if embedded_bytes:
+            self._set_label_pixmap_from_bytes(label, embedded_bytes)
+
+    @staticmethod
+    def _locate_external_cover(file_path: str) -> str | None:
+        from pathlib import Path
+
+        try:
+            parent = Path(file_path).parent if file_path else None
+            if parent and parent.exists():
+                for name in ["cover.jpg", "cover.jpeg", "cover.png"]:
+                    p = parent / name
+                    if p.exists():
+                        return str(p)
+        except (OSError, ValueError):
+            return None
+        return None
+
+    @staticmethod
+    def _render_image_path_to_label(label: QLabel, image_path: str) -> bool:
+        from PIL import Image
+        from PyQt6.QtGui import QPixmap
+
+        try:
+            from io import BytesIO
+
+            with Image.open(image_path) as img:
+                img.thumbnail((512, 512))
+                buf = BytesIO()
+                img.save(buf, format="PNG")
+                data = buf.getvalue()
+            pm = QPixmap()
+            if pm.loadFromData(data):
+                label.setText("")
+                label.setPixmap(pm)
+                return True
+        except (OSError, ValueError):
+            return False
+        return False
+
+    @staticmethod
+    def _read_embedded_bytes(file_path: str) -> bytes | None:
+        if not file_path or "." not in file_path:
+            return None
+
+        ext = file_path.rsplit(".", 1)[-1].lower()
+        try:
+            if ext == "flac":
+                return DownloadsHistoryView._extract_flac_cover_bytes(file_path)
+            if ext == "mp3":
+                return DownloadsHistoryView._extract_mp3_cover_bytes(file_path)
+            if ext in {"m4a", "mp4", "aac"}:
+                return DownloadsHistoryView._extract_mp4_cover_bytes(file_path)
+        except (OSError, ValueError):
+            return None
+        return None
+
+    @staticmethod
+    def _extract_flac_cover_bytes(file_path: str) -> bytes | None:
+        from mutagen import MutagenError  # type: ignore
+
+        try:
+            from mutagen.flac import FLAC  # type: ignore
+
+            fl = FLAC(file_path)
+            if getattr(fl, "pictures", None):
+                return fl.pictures[0].data
+        except (MutagenError, OSError, ValueError):
+            return None
+        return None
+
+    @staticmethod
+    def _extract_mp3_cover_bytes(file_path: str) -> bytes | None:
+        from mutagen import MutagenError  # type: ignore
+
+        try:
+            from mutagen.id3 import ID3  # type: ignore
+
+            id3 = ID3(file_path)
+            apics = id3.getall("APIC")
+            if apics:
+                return apics[0].data
+        except (MutagenError, OSError, ValueError):
+            return None
+        return None
+
+    @staticmethod
+    def _extract_mp4_cover_bytes(file_path: str) -> bytes | None:
+        from mutagen import MutagenError  # type: ignore
+
+        try:
+            from mutagen.mp4 import MP4  # type: ignore
+
+            mp4 = MP4(file_path)
+            covr = (mp4.tags or {}).get("covr")
+            if covr:
+                return bytes(covr[0])
+        except (MutagenError, OSError, ValueError):
+            return None
+        return None
+
+    @staticmethod
+    def _set_label_pixmap_from_bytes(label: QLabel, data: bytes) -> bool:
+        from PyQt6.QtGui import QPixmap
+
+        pm = QPixmap()
+        if not pm.loadFromData(data):
+            return False
+        if pm.width() > 512 or pm.height() > 512:
+            pm = pm.scaled(
+                512,
+                512,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        label.setText("")
+        label.setPixmap(pm)
+        return True
 
     def setup_timer(self):
         """Set up timer for periodic updates."""

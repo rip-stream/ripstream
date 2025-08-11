@@ -809,10 +809,11 @@ class DownloadService:
             return set()
 
     def get_download_details(self, download_id: str) -> dict[str, Any] | None:
-        """Return a detailed dictionary of file and audio technicals for Info dialogs.
+        """Return detailed file and audio technicals for Info dialogs.
 
-        Includes: filename, format, length (MM:SS), bitrate text, file size text,
-        sample rate Hz, bits per sample, channels label, album title, track count.
+        Fields include: filename, format, length (MM:SS), bitrate text, file size text,
+        sample rate Hz, bits per sample, channels label, album title, track/disc numbers,
+        and a simple total_tracks placeholder (1 for tracks).
         """
         try:
             with self.downloads_db.get_session() as session:
@@ -824,40 +825,35 @@ class DownloadService:
                 ai = getattr(record, "audio_info", None)
                 # Compute human-friendly fields
                 file_path = record.file_path or ""
-                container = (ai.container if ai else None) or (
-                    (file_path.rsplit(".", 1)[-1]).upper() if "." in file_path else None
-                )
+                container = self._infer_container(ai, file_path)
+
                 # Duration in seconds to MM:SS
                 duration = (
                     ai.duration_seconds if ai else None
                 ) or record.duration_seconds
-                length_text = ""
-                if isinstance(duration, (int, float)) and duration is not None:
-                    minutes = int(duration // 60)
-                    seconds = int(duration % 60)
-                    length_text = f"{minutes:02d}:{seconds:02d}"
-                # Bitrate kbps text
-                bitrate_kbps = ai.bitrate if ai else None
-                bitrate_text = f"{bitrate_kbps} kbps" if bitrate_kbps else ""
-                # File size MB
+                length_text = self._format_length(duration)
+
+                # Bitrate text (prefer stored kbps, otherwise compute from size/duration)
                 file_size_bytes = ai.file_size_bytes if ai else record.file_size_bytes
-                file_size_text = ""
-                if isinstance(file_size_bytes, int) and file_size_bytes > 0:
-                    file_size_text = f"{(file_size_bytes / (1024 * 1024)):.1f} MB"
+                bitrate_text = self._compute_bitrate_text(
+                    bitrate_kbps=ai.bitrate if ai else None,
+                    file_size_bytes=file_size_bytes,
+                    duration_seconds=duration,
+                )
+
+                # File size MB
+                file_size_text = self._format_file_size_text(file_size_bytes)
+
                 # Sample rate Hz
                 sampling_rate = ai.sampling_rate if ai else None
                 sample_rate_text = f"{int(sampling_rate)} Hz" if sampling_rate else ""
+
                 # Bit depth
                 bit_depth = ai.bit_depth if ai else None
+
                 # Channels label
                 channels = ai.channels if ai else None
-                channels_text = ""
-                if channels == 1:
-                    channels_text = "Mono"
-                elif channels == 2:
-                    channels_text = "Stereo"
-                elif isinstance(channels, int) and channels > 2:
-                    channels_text = f"{channels} ch"
+                channels_text = self._format_channels_text(channels)
 
                 return {
                     "filename": file_path,
@@ -869,11 +865,77 @@ class DownloadService:
                     "bits_per_sample": bit_depth,
                     "channels": channels_text,
                     "album": record.album or "",
+                    "track_number": record.track_number,
+                    "disc_number": record.disc_number,
                     "total_tracks": 1,
                 }
         except Exception:
             logger.exception("Failed to build download details for %s", download_id)
             return None
+
+    # ---- helpers to keep `get_download_details` simple ----
+    @staticmethod
+    def _infer_container(ai: Any | None, file_path: str) -> str | None:
+        container = (ai.container if ai else None) if hasattr(ai, "container") else None
+        if container:
+            return container
+        if "." in file_path:
+            return file_path.rsplit(".", 1)[-1].upper()
+        return None
+
+    @staticmethod
+    def _format_length(duration_seconds: Any) -> str:
+        if isinstance(duration_seconds, (int, float)) and duration_seconds is not None:
+            minutes = int(duration_seconds // 60)
+            seconds = int(duration_seconds % 60)
+            return f"{minutes:02d}:{seconds:02d}"
+        return ""
+
+    @staticmethod
+    def _compute_bitrate_text(
+        *,
+        bitrate_kbps: Any | None,
+        file_size_bytes: Any | None,
+        duration_seconds: Any | None,
+    ) -> str:
+        value_kbps: float | None = None
+        if isinstance(bitrate_kbps, int) and bitrate_kbps > 0:
+            value_kbps = float(bitrate_kbps)
+        else:
+            if (
+                isinstance(file_size_bytes, int)
+                and file_size_bytes > 0
+                and isinstance(duration_seconds, (int, float))
+                and duration_seconds
+                and duration_seconds > 0
+            ):
+                value_kbps = (float(file_size_bytes) * 8.0) / (
+                    float(duration_seconds) * 1000.0
+                )
+
+        if isinstance(value_kbps, float):
+            return (
+                f"{value_kbps:.3f} kbps"
+                if value_kbps % 1
+                else f"{int(value_kbps)} kbps"
+            )
+        return ""
+
+    @staticmethod
+    def _format_file_size_text(file_size_bytes: Any | None) -> str:
+        if isinstance(file_size_bytes, int) and file_size_bytes > 0:
+            return f"{(file_size_bytes / (1024 * 1024)):.1f} MB"
+        return ""
+
+    @staticmethod
+    def _format_channels_text(channels: Any | None) -> str:
+        if channels == 1:
+            return "Mono"
+        if channels == 2:
+            return "Stereo"
+        if isinstance(channels, int) and channels > 2:
+            return f"{channels} ch"
+        return ""
 
     def _record_to_dict(self, record: DownloadRecord) -> dict[str, Any]:
         """Convert a DownloadRecord to a dictionary for UI consumption.

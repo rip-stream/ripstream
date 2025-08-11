@@ -108,7 +108,26 @@ class DownloadHandler(QObject):
 
     def _create_download_record(self, item_details: dict) -> dict[str, Any]:
         """Create a download record for the downloads view."""
-        return {
+        # Normalize common metadata keys from providers/workers
+        track_number = (
+            item_details.get("track_number") or item_details.get("tracknumber") or None
+        )
+        disc_number = (
+            item_details.get("disc_number") or item_details.get("discnumber") or None
+        )
+
+        # Duration can appear as seconds or milliseconds depending on provider
+        duration_seconds = item_details.get("duration_seconds")
+        if duration_seconds is None:
+            dur = item_details.get("duration")
+            if isinstance(dur, (int, float)):
+                duration_seconds = float(dur)
+            else:
+                dur_ms = item_details.get("duration_ms")
+                if isinstance(dur_ms, (int, float)):
+                    duration_seconds = float(dur_ms) / 1000.0
+
+        record: dict[str, Any] = {
             "title": item_details.get("title", "Unknown Title"),
             "artist": item_details.get("artist", "Unknown Artist"),
             "album": item_details.get(
@@ -123,7 +142,15 @@ class DownloadHandler(QObject):
             "album_id": item_details.get("album_id"),
             # pass-through of technical audio info from metadata providers when present
             "audio_info": item_details.get("audio_info"),
+            # enrich with optional fields expected by DownloadRecord when available
+            "track_number": track_number,
+            "disc_number": disc_number,
+            "duration_seconds": duration_seconds,
+            "album_artist": item_details.get("album_artist")
+            or item_details.get("albumartist"),
         }
+
+        return record
 
     def _handle_download_started(self, _download_id: str, item_details: dict):
         """Handle download started signal."""
