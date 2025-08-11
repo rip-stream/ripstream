@@ -87,6 +87,7 @@ class TestPreferencesDialog:
         expected_buttons = (
             QDialogButtonBox.StandardButton.Ok
             | QDialogButtonBox.StandardButton.Cancel
+            | QDialogButtonBox.StandardButton.Apply
             | QDialogButtonBox.StandardButton.RestoreDefaults
         )
         assert standard_buttons == expected_buttons

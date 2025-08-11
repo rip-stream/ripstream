@@ -47,11 +47,17 @@ class PreferencesDialog(QDialog):
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
             | QDialogButtonBox.StandardButton.Cancel
+            | QDialogButtonBox.StandardButton.Apply
             | QDialogButtonBox.StandardButton.RestoreDefaults
         )
 
         button_box.accepted.connect(self.accept_changes)
         button_box.rejected.connect(self.reject)
+
+        # Connect Apply button to apply without closing
+        apply_button = button_box.button(QDialogButtonBox.StandardButton.Apply)
+        if apply_button is not None:
+            apply_button.clicked.connect(self.apply_changes)
 
         # Connect RestoreDefaults button if it exists
         restore_button = button_box.button(
