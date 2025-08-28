@@ -309,12 +309,14 @@ class DownloadsTableWidget(QTableWidget):
         retry_btn.setIcon(qta.icon("fa5s.redo"))
         retry_btn.setFixedSize(60, 25)
         retry_btn.clicked.connect(lambda: self.retry_requested.emit(download_id))
-        # Enable only for failed status
+        # Enable for failed or completed status to allow forced retry
         status_text = status.value if hasattr(status, "value") else str(status)
-        is_failed = (status == DownloadStatus.FAILED) or (
-            status_text.lower() == "failed"
-        )
-        retry_btn.setEnabled(is_failed)
+        status_text_lc = status_text.lower()
+        is_retryable = status in (
+            DownloadStatus.FAILED,
+            DownloadStatus.COMPLETED,
+        ) or status_text_lc in ("failed", "completed")
+        retry_btn.setEnabled(is_retryable)
         layout.addWidget(retry_btn)
 
         # Remove button
@@ -360,7 +362,7 @@ class DownloadsTableWidget(QTableWidget):
                 ):
                     status_item.setBackground(Qt.GlobalColor.yellow)
 
-                # Update actions widget (retry enabled only if failed)
+                # Update actions widget (retry enabled for failed or completed)
                 actions_widget = self.create_actions_widget({
                     "download_id": download_id,
                     "status": status,

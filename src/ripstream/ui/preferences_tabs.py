@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -447,6 +448,12 @@ class DownloadsTab(BasePreferenceTab):
         self.requests_per_minute.setSpecialValueText("No Limit")
         connection_layout.addRow("API Requests per Minute:", self.requests_per_minute)
 
+        # New: Request Timeout Seconds
+        self.timeout_seconds = QSpinBox()
+        self.timeout_seconds.setRange(5, 3600)
+        self.timeout_seconds.setSuffix(" s")
+        connection_layout.addRow("Request Timeout:", self.timeout_seconds)
+
         self.verify_ssl = QCheckBox("Verify SSL certificates")
         connection_layout.addRow(self.verify_ssl)
 
@@ -463,6 +470,18 @@ class DownloadsTab(BasePreferenceTab):
             "Probe downloaded files for technical info (slower)"
         )
         behavior_layout.addRow(self.probe_audio_technicals)
+
+        # New: Retry settings
+        self.max_retries = QSpinBox()
+        self.max_retries.setRange(0, 10)
+        behavior_layout.addRow("Max Retries:", self.max_retries)
+
+        self.retry_delay = QDoubleSpinBox()
+        self.retry_delay.setRange(0.1, 60.0)
+        self.retry_delay.setSingleStep(0.25)
+        self.retry_delay.setDecimals(2)
+        self.retry_delay.setSuffix(" s")
+        behavior_layout.addRow("Retry Delay:", self.retry_delay)
 
         layout.addWidget(behavior_group)
 
@@ -511,12 +530,29 @@ class DownloadsTab(BasePreferenceTab):
         """Load download configuration."""
         self.max_connections.setValue(self.config.downloads.max_connections)
         self.requests_per_minute.setValue(self.config.downloads.requests_per_minute)
+        # New: timeout seconds
+        try:
+            self.timeout_seconds.setValue(
+                int(float(self.config.downloads.timeout_seconds))
+            )
+        except (TypeError, ValueError, AttributeError):
+            self.timeout_seconds.setValue(120)
         self.verify_ssl.setChecked(self.config.downloads.verify_ssl)
         self.concurrent_downloads.setChecked(self.config.downloads.concurrency)
         # Audio technicals probing
         self.probe_audio_technicals.setChecked(
             getattr(self.config.downloads, "probe_audio_technicals", False)
         )
+
+        # New: retry settings
+        try:
+            self.max_retries.setValue(int(self.config.downloads.max_retries))
+        except (TypeError, ValueError, AttributeError):
+            self.max_retries.setValue(3)
+        try:
+            self.retry_delay.setValue(float(self.config.downloads.retry_delay))
+        except (TypeError, ValueError, AttributeError):
+            self.retry_delay.setValue(1.0)
 
         self.track_downloads.setChecked(self.config.database.downloads_enabled)
         self.downloads_db_path.setText(str(self.config.database.database_path))
@@ -534,11 +570,17 @@ class DownloadsTab(BasePreferenceTab):
         """Save download configuration."""
         self.config.downloads.max_connections = self.max_connections.value()
         self.config.downloads.requests_per_minute = self.requests_per_minute.value()
+        # New: timeout seconds
+        self.config.downloads.timeout_seconds = float(self.timeout_seconds.value())
         self.config.downloads.verify_ssl = self.verify_ssl.isChecked()
         self.config.downloads.concurrency = self.concurrent_downloads.isChecked()
         self.config.downloads.probe_audio_technicals = (
             self.probe_audio_technicals.isChecked()
         )
+
+        # New: retry settings
+        self.config.downloads.max_retries = int(self.max_retries.value())
+        self.config.downloads.retry_delay = float(self.retry_delay.value())
 
         self.config.database.downloads_enabled = self.track_downloads.isChecked()
         self.config.database.database_path = Path(self.downloads_db_path.text())

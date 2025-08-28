@@ -27,8 +27,8 @@ from ripstream.ui.discography.grid_view import AlbumArtGridView
 from ripstream.ui.discography.list_view import DiscographyListView
 
 # SCREAMING CONSTANTS for favorites flyout icon sizing
-FAVORITES_ICON_WIDTH_PX = 50
-FAVORITES_ICON_HEIGHT_PX = 50
+FAVORITES_ICON_WIDTH_PX = 100
+FAVORITES_ICON_HEIGHT_PX = 100
 
 
 class DiscographyView(QWidget):
