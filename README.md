@@ -10,6 +10,10 @@
   [![PyQt6](https://img.shields.io/badge/GUI-PyQt6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
 </div>
 
+<div align="center">
+  <img src="images/screenshot.png" alt="Screenshot" width="830" height="439">
+</div>
+
 ## Overview
 
 Ripstream is a comprehensive music downloading application built with modern Python and PyQt6. It provides a user-friendly interface for downloading high-quality music from various streaming services, with support for metadata tagging, artwork embedding, and organized file management.
