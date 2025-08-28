@@ -301,7 +301,7 @@ class FilepathsConfig(BaseConfig):
         description="Template for folder names",
     )
     track_format: str = Field(
-        default="{tracknumber:02}. {artist} - {title}{explicit}",
+        default="{discnumber}.{tracknumber:02}. {artist} - {title}{explicit}",
         description="Template for track filenames",
     )
     restrict_characters: bool = Field(

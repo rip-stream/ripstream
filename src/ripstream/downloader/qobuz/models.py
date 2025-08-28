@@ -52,7 +52,9 @@ class QobuzTrackResponse(QobuzApiResponse):
     disc_number: int = Field(default=1, description="Disc number")
 
     # Artist info
-    performer: dict[str, Any] = Field(..., description="Performer information")
+    performer: dict[str, Any] | None = Field(
+        None, description="Performer information (optional in some responses)"
+    )
     composer: dict[str, Any] | None = Field(None, description="Composer information")
 
     # Album info
@@ -82,6 +84,8 @@ class QobuzTrackResponse(QobuzApiResponse):
     @property
     def artist_name(self) -> str:
         """Get the primary artist name."""
+        if not self.performer:
+            return "Unknown Artist"
         return self.performer.get("name", "Unknown Artist")
 
     @property
