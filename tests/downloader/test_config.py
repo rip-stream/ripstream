@@ -22,7 +22,7 @@ class TestDownloadBehaviorSettings:
 
     def test_download_behavior_settings_defaults(self, default_settings):
         """Test DownloadBehaviorSettings with default values."""
-        assert default_settings.timeout_seconds == 30.0
+        assert default_settings.timeout_seconds == 120.0
         assert default_settings.chunk_size == 8192
         assert default_settings.max_concurrent_chunks == 1
         assert default_settings.max_retries == 3
@@ -228,7 +228,7 @@ class TestDownloaderConfig:
         """Test getting default behavior settings for a source."""
         settings = default_config.get_behavior_for_source("unknown_source")
         assert isinstance(settings, DownloadBehaviorSettings)
-        assert settings.timeout_seconds == 30.0  # Default value
+        assert settings.timeout_seconds == 120.0  # Default value
 
     def test_get_behavior_for_source_with_overrides(self, default_config):
         """Test getting behavior settings for a source with overrides."""

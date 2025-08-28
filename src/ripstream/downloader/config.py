@@ -16,7 +16,7 @@ class DownloadBehaviorSettings(BaseModel):
 
     # Connection settings
     timeout_seconds: float = Field(
-        default=30.0, description="Download timeout in seconds"
+        default=120.0, description="Download timeout in seconds"
     )
     chunk_size: int = Field(default=8192, description="Download chunk size in bytes")
     max_concurrent_chunks: int = Field(

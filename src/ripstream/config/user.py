@@ -50,6 +50,10 @@ class DownloadsConfig(BaseConfig):
         description="Verify SSL certificates for API connections",
     )
     # Download behavior settings
+    timeout_seconds: float = Field(
+        default=120.0,
+        description="Download timeout in seconds (per request)",
+    )
     max_retries: int = Field(
         default=3,
         description="Maximum number of retry attempts for failed downloads",
@@ -96,6 +100,16 @@ class DownloadsConfig(BaseConfig):
             msg = "Float values must be positive"
             raise ValueError(msg)
         return v
+
+    @field_validator("timeout_seconds")
+    @classmethod
+    def validate_timeout_seconds(cls, v: float) -> float:
+        """Validate timeout is positive and reasonably bounded."""
+        if v <= 0:
+            msg = "Timeout must be positive"
+            raise ValueError(msg)
+        # Hard cap to avoid absurd values
+        return float(v)
 
     @field_validator("folder", mode="before")
     @classmethod

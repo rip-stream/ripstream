@@ -116,10 +116,11 @@ class DownloadWorker(QThread):
 
     def _get_source_settings(self) -> dict[str, dict[str, Any]]:
         """Get source-specific settings for download configuration."""
+        timeout_seconds = self._get_timeout_seconds_default_safe()
         return {
             "qobuz": {
                 "requests_per_minute": self.config.downloads.requests_per_minute,
-                "timeout_seconds": 30.0,
+                "timeout_seconds": timeout_seconds,
             }
         }
 
@@ -185,11 +186,25 @@ class DownloadWorker(QThread):
     def _apply_download_settings(self):
         """Apply download behavior settings from user config to downloader config."""
         behavior_settings = {
+            "timeout_seconds": self._get_timeout_seconds_default_safe(),
             "max_retries": self.config.downloads.max_retries,
             "retry_delay": self.config.downloads.retry_delay,
             "chunk_size": self.config.downloads.chunk_size,
         }
         self._add_source_settings("default", behavior_settings)
+
+    def _get_timeout_seconds_default_safe(self) -> float:
+        """Return a numeric timeout from config or a sensible default when missing.
+
+        Some tests use lightweight mocks for `self.config.downloads` and may
+        not define `timeout_seconds`. We fall back to 120.0 in that case, or
+        when the provided value is not castable to float.
+        """
+        try:
+            raw_value = getattr(self.config.downloads, "timeout_seconds", 120.0)
+            return float(raw_value)
+        except (TypeError, ValueError):
+            return 120.0
 
     def _add_source_settings(self, source: str, settings: dict[str, Any]):
         """Add settings for a specific source."""
