@@ -30,7 +30,7 @@ def main() -> None:
     # Set application properties
     app.setApplicationName("Ripstream")
     app.setApplicationDisplayName("Ripstream - Music Downloader")
-    app.setApplicationVersion("0.1.0")
+    app.setApplicationVersion("0.2.0")
     app.setOrganizationName("ripstream")
     app.setOrganizationDomain("ripstream.app")
 

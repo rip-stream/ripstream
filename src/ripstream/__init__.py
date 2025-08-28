@@ -3,6 +3,6 @@
 
 """Ripstream - A cross-platform music downloader for streaming services."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "ripstream contributors"
 __license__ = "MIT"
