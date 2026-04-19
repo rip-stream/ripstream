@@ -43,6 +43,16 @@ QOBUZ_LOGIN_API_PATTERN = re.compile(
     r"https?://(?:www\.)?qobuz\.com/api\.json/0\.2/user/login"
 )
 
+# Google reCAPTCHA refuses to fully initialize for clients that advertise an
+# unrecognized User-Agent, leaving ``grecaptcha.reset`` undefined and breaking
+# the Qobuz login form. Pretend to be a current desktop Chrome build so the
+# challenge widget loads correctly inside the embedded WebEngine view.
+_DESKTOP_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
 _INTERCEPT_MARKER = "__RIPSTREAM_QOBUZ_TOKEN__"
 
 _INTERCEPT_SCRIPT = f"""
@@ -177,6 +187,7 @@ class QobuzLoginDialog(QDialog):
         layout.addWidget(instructions)
 
         self._profile = QWebEngineProfile(self)
+        self._profile.setHttpUserAgent(_DESKTOP_USER_AGENT)
         self._page = _TokenCapturePage(self._profile, self._profile)
         self._page.token_payload_received.connect(self._on_token_payload)
 
