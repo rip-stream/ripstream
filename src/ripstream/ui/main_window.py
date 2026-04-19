@@ -225,6 +225,12 @@ class MainWindow(QMainWindow):
         if hasattr(self, "metadata_service"):
             self.metadata_service.update_config(new_config)
 
+        # Propagate config to the download handler so credentials/settings
+        # changes (e.g. switching Qobuz to token-based auth) take effect
+        # for subsequent downloads without requiring a restart.
+        if hasattr(self, "download_handler"):
+            self.download_handler.update_config(new_config)
+
         self.ui_manager.update_status("Configuration updated")
 
     def show_about(self):
