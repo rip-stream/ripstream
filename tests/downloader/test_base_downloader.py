@@ -381,6 +381,95 @@ class TestBaseDownloader:
 
             await session_manager.close_all_sessions()
 
+    async def test_download_multiple_filename_collision(self):
+        """Concurrent downloads with the same filename get unique paths.
+
+        Mirrors the multi-disc album scenario where two tracks sanitize to the
+        same target filename - the second download must be saved to a path
+        with an appended counter rather than skipped or clobbered.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DownloaderConfig(download_directory=Path(temp_dir))
+            session_manager = SessionManager(config)
+            progress_tracker = ProgressTracker()
+
+            downloader = MockDownloader(config, session_manager, progress_tracker)
+            await downloader.authenticate({"api_key": "test"})
+            downloader.set_download_delay(0.01)
+
+            contents = [
+                DownloadableContent(
+                    content_id=f"track_disc_{disc}",
+                    content_type=ContentType.TRACK,
+                    source=downloader.source_name,
+                    title="Foo",
+                    artist="Test Artist",
+                    url=f"https://example.com/track_disc_{disc}",
+                    file_name="01 - Test Artist - Foo",
+                    file_extension="mp3",
+                    expected_size=1000,
+                )
+                for disc in (1, 2)
+            ]
+
+            results = await downloader.download_multiple(contents, max_concurrent=2)
+
+            assert len(results) == 2
+            assert all(r.is_success for r in results)
+            file_paths = {r.file_path for r in results if r.file_path is not None}
+            assert len(file_paths) == 2
+            for path in file_paths:
+                assert os.path.exists(path)
+            assert any(Path(p).name == "01 - Test Artist - Foo.mp3" for p in file_paths)
+            assert any(
+                Path(p).name == "01 - Test Artist - Foo (2).mp3" for p in file_paths
+            )
+
+            await session_manager.close_all_sessions()
+
+    async def test_sequential_downloads_collide_only_when_active(self):
+        """Sequential downloads release reservations and reuse the base path."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = DownloaderConfig(download_directory=Path(temp_dir))
+            session_manager = SessionManager(config)
+            progress_tracker = ProgressTracker()
+
+            downloader = MockDownloader(config, session_manager, progress_tracker)
+            await downloader.authenticate({"api_key": "test"})
+
+            content_a = DownloadableContent(
+                content_id="a",
+                content_type=ContentType.TRACK,
+                source=downloader.source_name,
+                title="Foo",
+                artist="Test Artist",
+                url="https://example.com/a",
+                file_name="01 - Foo",
+                file_extension="mp3",
+                expected_size=1000,
+            )
+            result_a = await downloader.download(content_a)
+            assert result_a.is_success is True
+            assert downloader._reserved_paths == {}
+
+            content_b = DownloadableContent(
+                content_id="b",
+                content_type=ContentType.TRACK,
+                source=downloader.source_name,
+                title="Foo",
+                artist="Test Artist",
+                url="https://example.com/b",
+                file_name="01 - Foo",
+                file_extension="mp3",
+                expected_size=1000,
+            )
+            result_b = await downloader.download(content_b)
+            assert result_b.is_success is True
+            assert result_b.metadata.get("skipped") is True
+            assert downloader._reserved_paths == {}
+
+            await session_manager.close_all_sessions()
+
     async def test_content_type_support(self):
         """Test content type support checking."""
         config = DownloaderConfig()
