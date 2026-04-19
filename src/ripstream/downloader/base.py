@@ -182,6 +182,12 @@ class BaseDownloader(ABC):
         self.session_manager = session_manager
         self.progress_tracker = progress_tracker
         self._active_downloads: dict[UUID, asyncio.Task[DownloadResult]] = {}
+        # Maps an in-flight target file path to the ``content_id`` that
+        # reserved it. Used to disambiguate concurrent downloads that would
+        # otherwise produce the same filename (e.g. a multi-disc album where
+        # disc 1 / track 1 and disc 2 / track 1 share the same display name,
+        # or alternate versions/remixes that sanitize to identical names).
+        self._reserved_paths: dict[str, str] = {}
 
     @property
     @abstractmethod
@@ -233,10 +239,11 @@ class BaseDownloader(ABC):
         await path_mkdir(download_directory, parents=True, exist_ok=True)
         await self._check_available_space(download_directory, content.expected_size)
 
-        file_path = str(Path(download_directory) / content.get_safe_filename())
+        file_path = self._reserve_unique_path(download_directory, content)
 
         # Check if file already exists and is valid
         if self._should_skip_download(file_path, content, settings):
+            self._release_path(file_path)
             return self._create_skip_result(download_id, file_path)
 
         # Perform the download
@@ -256,6 +263,63 @@ class BaseDownloader(ABC):
             return await self._handle_download_error(
                 e, download_id, file_path, start_time
             )
+        finally:
+            self._release_path(file_path)
+
+    def _reserve_unique_path(
+        self, download_directory: str, content: DownloadableContent
+    ) -> str:
+        """Reserve a unique target file path for a download.
+
+        Concurrent downloads within an album (or playlist) can produce the
+        same sanitized filename - for example two discs that each contain a
+        ``track 01`` titled ``foo``, or a track and its remix that collapse to
+        identical names after sanitization. To avoid one download silently
+        clobbering another, this method picks the first candidate path that is
+        not already reserved by a different ``content_id`` in this downloader
+        instance, appending an incrementing ``" (N)"`` suffix to the filename
+        stem when a collision is detected.
+
+        Parameters
+        ----------
+        download_directory : str
+            Absolute path of the directory the file will be written to.
+        content : DownloadableContent
+            The content being downloaded; ``content_id`` is used to allow a
+            given content to re-reserve a path it already owns (idempotent).
+
+        Returns
+        -------
+        str
+            Absolute file path that has been reserved for this download.
+        """
+        base_path = Path(download_directory) / content.get_safe_filename()
+        stem = base_path.stem
+        suffix = base_path.suffix
+        parent = base_path.parent
+
+        counter = 1
+        candidate = str(base_path)
+        while True:
+            owner = self._reserved_paths.get(candidate)
+            if owner is None or owner == content.content_id:
+                self._reserved_paths[candidate] = content.content_id
+                return candidate
+
+            counter += 1
+            candidate = str(parent / f"{stem} ({counter}){suffix}")
+
+    def _release_path(self, file_path: str | None) -> None:
+        """Release a previously reserved target file path.
+
+        Parameters
+        ----------
+        file_path : str or None
+            The file path returned by :meth:`_reserve_unique_path`. ``None``
+            and unknown paths are ignored to keep cleanup paths simple.
+        """
+        if file_path:
+            self._reserved_paths.pop(file_path, None)
 
     def _should_skip_download(
         self,
