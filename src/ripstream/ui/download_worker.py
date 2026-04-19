@@ -126,6 +126,9 @@ class DownloadWorker(QThread):
 
     def _initialize_session_components(self):
         """Initialize session manager and progress tracker."""
+        if self.download_config is None:
+            msg = "Download config must be created before session components"
+            raise RuntimeError(msg)
         self.session_manager = SessionManager(self.download_config)
         self.progress_tracker = ProgressTracker()
 
@@ -220,7 +223,11 @@ class DownloadWorker(QThread):
         self, service: StreamingSource, credentials: dict[str, Any] | None = None
     ):
         """Create a download provider for the specified service."""
-        if not self.session_manager or not self.progress_tracker:
+        if (
+            not self.session_manager
+            or not self.progress_tracker
+            or self.download_config is None
+        ):
             msg = "Download environment not initialized"
             raise RuntimeError(msg)
 
@@ -333,9 +340,8 @@ class DownloadWorker(QThread):
                 self._last_known_progress = current_progress
 
             # Emit raw instantaneous speed for aggregation at UI, throttle to reduce UI load
-            now_ms = (
-                self.msecsSinceEpoch() if hasattr(self, "msecsSinceEpoch") else None
-            )
+            msecs = getattr(self, "msecsSinceEpoch", None)
+            now_ms = msecs() if callable(msecs) else None
             last_ms = getattr(self, "_last_speed_emit_ms", None)
             should_emit = last_ms is None
             if now_ms is not None:
@@ -380,7 +386,7 @@ class DownloadWorker(QThread):
 
     def _has_valid_provider_and_download(self) -> bool:
         """Check if we have valid provider and download ID."""
-        return (
+        return bool(
             hasattr(self, "_current_provider")
             and self._current_provider
             and hasattr(self, "_current_download_id")
@@ -417,7 +423,8 @@ class DownloadWorker(QThread):
             self.download_progress.emit(self._current_download_id, current_progress)
             self._last_known_progress = current_progress
         # Emit speed samples during checks, respecting throttle
-        now_ms = self.msecsSinceEpoch() if hasattr(self, "msecsSinceEpoch") else None
+        msecs = getattr(self, "msecsSinceEpoch", None)
+        now_ms = msecs() if callable(msecs) else None
         last_ms = getattr(self, "_last_speed_emit_ms", None)
         should_emit = last_ms is None
         if now_ms is not None:
@@ -436,11 +443,11 @@ class DownloadWorker(QThread):
         if hasattr(self, "_progress_check_timer"):
             self._progress_check_timer.stop()
             self._progress_check_timer.deleteLater()
-            delattr(self, "_progress_check_timer")
+            del self._progress_check_timer
 
         # Clean up progress check guard
         if hasattr(self, "_progress_check_in_progress"):
-            delattr(self, "_progress_check_in_progress")
+            del self._progress_check_in_progress
 
         # Remove the callback from the progress tracker
         if hasattr(self, "_current_provider") and self._current_provider:
@@ -453,13 +460,13 @@ class DownloadWorker(QThread):
                     progress_tracker.remove_callback(self._progress_callback)
 
         if hasattr(self, "_current_provider"):
-            delattr(self, "_current_provider")
+            del self._current_provider
 
         if hasattr(self, "_current_download_id"):
-            delattr(self, "_current_download_id")
+            del self._current_download_id
 
         if hasattr(self, "_last_known_progress"):
-            delattr(self, "_last_known_progress")
+            del self._last_known_progress
 
     def _extract_download_info(self, item_details: dict) -> dict[str, Any]:
         """Extract and validate download information from item details."""
@@ -510,6 +517,9 @@ class DownloadWorker(QThread):
         )
 
         # Authenticate using the current event loop
+        if self._loop is None:
+            msg = "Event loop is not initialized"
+            raise RuntimeError(msg)
         auth_result = self._loop.run_until_complete(provider.authenticate())
         if not auth_result:
             msg = f"Failed to authenticate with {download_info['source']}"
@@ -542,6 +552,9 @@ class DownloadWorker(QThread):
         self, provider: Any, download_info: dict, download_dir: str
     ) -> Any:
         """Execute the actual download."""
+        if self._loop is None:
+            msg = "Event loop is not initialized"
+            raise RuntimeError(msg)
         return self._loop.run_until_complete(
             provider.download_content(
                 content_id=download_info["item_id"],

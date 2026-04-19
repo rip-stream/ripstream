@@ -434,6 +434,7 @@ class TestQobuzDownloadProvider:
             result = await provider.download_content("test_id", ContentType.TRACK)
 
             assert result.success is False
+            assert result.error_message is not None
             assert "Download failed" in result.error_message
 
     async def test_download_content_authenticates_if_needed(
@@ -616,6 +617,7 @@ class TestQobuzDownloadProvider:
             result = await provider.download_artist_discography("artist_123")
 
             assert result.success is False
+            assert result.error_message is not None
             assert "Download failed" in result.error_message
 
     async def test_cleanup(

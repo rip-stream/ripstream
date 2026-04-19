@@ -325,14 +325,16 @@ class FailedDownloadsRepository:
         with self.downloads_db.get_session() as db_session:
             # Total failed downloads
             total_failed = (
-                db_session.query(DownloadRecord)
+                db_session
+                .query(DownloadRecord)
                 .filter(DownloadRecord.status == DownloadStatus.FAILED)
                 .count()
             )
 
             # Failed downloads by source
             failed_by_source = (
-                db_session.query(
+                db_session
+                .query(
                     DownloadRecord.source,
                     func.count(DownloadRecord.id).label("count"),
                 )
@@ -343,7 +345,8 @@ class FailedDownloadsRepository:
 
             # Failed downloads by retry count
             failed_by_retry = (
-                db_session.query(
+                db_session
+                .query(
                     DownloadRecord.retry_count,
                     func.count(DownloadRecord.id).label("count"),
                 )
@@ -354,7 +357,8 @@ class FailedDownloadsRepository:
 
             # Can retry vs cannot retry
             can_retry = (
-                db_session.query(DownloadRecord)
+                db_session
+                .query(DownloadRecord)
                 .filter(
                     and_(
                         DownloadRecord.status == DownloadStatus.FAILED,
@@ -365,7 +369,8 @@ class FailedDownloadsRepository:
             )
 
             cannot_retry = (
-                db_session.query(DownloadRecord)
+                db_session
+                .query(DownloadRecord)
                 .filter(
                     and_(
                         DownloadRecord.status == DownloadStatus.FAILED,
@@ -745,7 +750,7 @@ class DownloadService:
             logger.exception("Failed to clear all downloads")
             return 0
 
-    def get_download_statistics(self) -> dict[str, int]:
+    def get_download_statistics(self) -> dict[str, Any]:
         """Get download statistics.
 
         Returns
@@ -1122,7 +1127,8 @@ class DownloadService:
         with self.downloads_db.get_session() as db_session:
             # Check download history
             history_exists = (
-                db_session.query(DownloadHistory)
+                db_session
+                .query(DownloadHistory)
                 .filter(
                     and_(
                         DownloadHistory.source == source,
@@ -1140,7 +1146,8 @@ class DownloadService:
 
             # Check active downloads
             active_download = (
-                db_session.query(DownloadRecord)
+                db_session
+                .query(DownloadRecord)
                 .filter(
                     and_(
                         DownloadRecord.source == source,
@@ -1196,7 +1203,8 @@ class DownloadService:
         """
         with self.downloads_db.get_session() as db_session:
             return (
-                db_session.query(DownloadRecord)
+                db_session
+                .query(DownloadRecord)
                 .filter(
                     DownloadRecord.status.in_([
                         DownloadStatus.PENDING,
@@ -1350,7 +1358,8 @@ class DownloadService:
         with self.downloads_db.get_session() as db_session:
             # Only remove completed downloads that are also in history
             completed_records = (
-                db_session.query(DownloadRecord)
+                db_session
+                .query(DownloadRecord)
                 .filter(
                     and_(
                         DownloadRecord.status == DownloadStatus.COMPLETED,
@@ -1364,7 +1373,8 @@ class DownloadService:
             for record in completed_records:
                 # Check if it exists in history
                 history_exists = (
-                    db_session.query(DownloadHistory)
+                    db_session
+                    .query(DownloadHistory)
                     .filter(
                         and_(
                             DownloadHistory.source == record.source,

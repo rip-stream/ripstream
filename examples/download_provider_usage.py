@@ -24,7 +24,7 @@ async def example_download_from_url():
     """Download content directly from a URL."""
     # Initialize configuration
     config = DownloaderConfig()
-    session_manager = SessionManager()  # type: ignore[missing-argument]
+    session_manager = SessionManager(config)
     progress_tracker = ProgressTracker()
 
     # Create download service
@@ -67,7 +67,7 @@ async def example_download_with_metadata():
     """Download content using pre-fetched metadata."""
     # Initialize configuration
     config = DownloaderConfig()
-    session_manager = SessionManager()  # type: ignore[missing-argument]
+    session_manager = SessionManager(config)
     progress_tracker = ProgressTracker()
 
     # Create download service
@@ -145,7 +145,7 @@ async def example_provider_factory():
 
     # Create a provider directly
     config = DownloaderConfig()
-    session_manager = SessionManager()  # type: ignore[missing-argument]
+    session_manager = SessionManager(config)
     progress_tracker = ProgressTracker()
 
     try:
@@ -176,7 +176,7 @@ async def example_provider_factory():
 async def main():
     """Run all examples."""
     # Create downloads directory
-    Path("./downloads").mkdir(exist_ok=True)
+    await asyncio.to_thread(Path("./downloads").mkdir, exist_ok=True)
 
     # Run examples
     example_url_parsing()

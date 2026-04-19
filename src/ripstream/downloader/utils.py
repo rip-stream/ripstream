@@ -3,12 +3,14 @@
 
 """Utility functions for the downloader module."""
 
+from typing import Any
+
 
 def raise_error(
     error_type: type[Exception],
     msg: str,
     base_error: Exception | None = None,
-    **kwargs: object,
+    **kwargs: Any,
 ) -> None:
     """
     Raise an error with the specified type and message.

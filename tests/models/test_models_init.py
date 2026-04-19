@@ -3,6 +3,7 @@
 
 """Unit tests for models/__init__.py module."""
 
+from typing import cast
 from unittest.mock import Mock, patch
 
 import pytest
@@ -102,20 +103,22 @@ class TestCreateFromSourceFunctions:
         # Create a mock source that doesn't have a specific factory
         mock_source = Mock()
 
-        with patch("ripstream.models.get_factory_for_source") as mock_get_factory:
+        with patch(
+            "ripstream.models.source_factory.get_factory_for_source"
+        ) as mock_get_factory:
             mock_factory = Mock()
             mock_factory.create_artist = Mock(return_value=Mock(spec=Artist))
             mock_get_factory.return_value = mock_factory
 
             # Test when factory doesn't have create_artist method
-            delattr(mock_factory, "create_artist")
+            del mock_factory.create_artist
 
             with patch.object(ModelFactory, "create_artist") as mock_model_create:
                 mock_artist = Mock(spec=Artist)
                 mock_model_create.return_value = mock_artist
 
                 result = create_artist_from_source(
-                    mock_source,  # type: ignore[invalid-argument-type]
+                    cast("StreamingSource", mock_source),
                     "test_id",
                     mock_artist_data,
                 )
@@ -151,20 +154,22 @@ class TestCreateFromSourceFunctions:
         """Test create_album_from_source falls back to ModelFactory when no specific factory."""
         mock_source = Mock()
 
-        with patch("ripstream.models.get_factory_for_source") as mock_get_factory:
+        with patch(
+            "ripstream.models.source_factory.get_factory_for_source"
+        ) as mock_get_factory:
             mock_factory = Mock()
             mock_get_factory.return_value = mock_factory
 
             # Test when factory doesn't have create_album method
             if hasattr(mock_factory, "create_album"):
-                delattr(mock_factory, "create_album")
+                del mock_factory.create_album
 
             with patch.object(ModelFactory, "create_album") as mock_model_create:
                 mock_album = Mock(spec=Album)
                 mock_model_create.return_value = mock_album
 
                 result = create_album_from_source(
-                    mock_source,  # type: ignore[invalid-argument-type]
+                    cast("StreamingSource", mock_source),
                     "test_id",
                     mock_album_data,
                 )
@@ -205,13 +210,15 @@ class TestCreateFromSourceFunctions:
         """Test create_track_from_source falls back to ModelFactory when no specific factory."""
         mock_source = Mock()
 
-        with patch("ripstream.models.get_factory_for_source") as mock_get_factory:
+        with patch(
+            "ripstream.models.source_factory.get_factory_for_source"
+        ) as mock_get_factory:
             mock_factory = Mock()
             mock_get_factory.return_value = mock_factory
 
             # Test when factory doesn't have create_track method
             if hasattr(mock_factory, "create_track"):
-                delattr(mock_factory, "create_track")
+                del mock_factory.create_track
 
             with patch.object(ModelFactory, "create_track") as mock_model_create:
                 mock_track = Mock(spec=Track)
@@ -219,7 +226,7 @@ class TestCreateFromSourceFunctions:
 
                 album_data = {"title": "Test Album"}
                 result = create_track_from_source(
-                    mock_source,  # type: ignore[invalid-argument-type]
+                    cast("StreamingSource", mock_source),
                     "test_id",
                     mock_track_data,
                     album_data,
@@ -263,20 +270,22 @@ class TestCreateFromSourceFunctions:
         """Test create_playlist_from_source falls back to ModelFactory when no specific factory."""
         mock_source = Mock()
 
-        with patch("ripstream.models.get_factory_for_source") as mock_get_factory:
+        with patch(
+            "ripstream.models.source_factory.get_factory_for_source"
+        ) as mock_get_factory:
             mock_factory = Mock()
             mock_get_factory.return_value = mock_factory
 
             # Test when factory doesn't have create_playlist method
             if hasattr(mock_factory, "create_playlist"):
-                delattr(mock_factory, "create_playlist")
+                del mock_factory.create_playlist
 
             with patch.object(ModelFactory, "create_playlist") as mock_model_create:
                 mock_playlist = Mock(spec=Playlist)
                 mock_model_create.return_value = mock_playlist
 
                 result = create_playlist_from_source(
-                    mock_source,  # type: ignore[invalid-argument-type]
+                    cast("StreamingSource", mock_source),
                     "test_id",
                     mock_playlist_data,
                 )

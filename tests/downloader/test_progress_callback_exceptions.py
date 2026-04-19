@@ -4,12 +4,13 @@
 """Tests for progress callback exception handling."""
 
 import logging
+from typing import Any
 from unittest.mock import Mock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
-from ripstream.downloader.progress import ProgressTracker
+from ripstream.downloader.progress import DownloadProgress, ProgressTracker
 
 
 class TestProgressCallbackExceptions:
@@ -22,7 +23,7 @@ class TestProgressCallbackExceptions:
         tracker = ProgressTracker()
         download_id = uuid4()
 
-        def failing_callback(download_id, progress):
+        def failing_callback(download_id: UUID, progress: DownloadProgress, **kwargs: Any) -> None:
             # Simulate TypeError
             msg = "Invalid argument type"
             raise TypeError(msg)
@@ -48,7 +49,7 @@ class TestProgressCallbackExceptions:
         tracker = ProgressTracker()
         download_id = uuid4()
 
-        def failing_callback(download_id, progress):
+        def failing_callback(download_id: UUID, progress: DownloadProgress, **kwargs: Any) -> None:
             # Simulate ValueError
             msg = "Invalid value"
             raise ValueError(msg)
@@ -72,7 +73,7 @@ class TestProgressCallbackExceptions:
         tracker = ProgressTracker()
         download_id = uuid4()
 
-        def failing_callback(download_id, progress):
+        def failing_callback(download_id: UUID, progress: DownloadProgress, **kwargs: Any) -> None:
             # Simulate AttributeError
             msg = "'NoneType' object has no attribute 'foo'"
             raise AttributeError(msg)
@@ -92,7 +93,7 @@ class TestProgressCallbackExceptions:
         tracker = ProgressTracker()
         download_id = uuid4()
 
-        def failing_callback(download_id, progress):
+        def failing_callback(download_id: UUID, progress: DownloadProgress, **kwargs: Any) -> None:
             # Simulate KeyError
             msg = "missing_key"
             raise KeyError(msg)
@@ -114,7 +115,7 @@ class TestProgressCallbackExceptions:
         tracker = ProgressTracker()
         download_id = uuid4()
 
-        def failing_callback(download_id, progress):
+        def failing_callback(download_id: UUID, progress: DownloadProgress, **kwargs: Any) -> None:
             # Simulate IndexError
             msg = "list index out of range"
             raise IndexError(msg)
@@ -136,7 +137,7 @@ class TestProgressCallbackExceptions:
         tracker = ProgressTracker()
         download_id = uuid4()
 
-        def failing_callback(download_id, progress):
+        def failing_callback(download_id: UUID, progress: DownloadProgress, **kwargs: Any) -> None:
             # Simulate unexpected exception
             msg = "Unexpected runtime error"
             raise RuntimeError(msg)
@@ -163,7 +164,7 @@ class TestProgressCallbackExceptions:
 
         successful_callback = Mock()
 
-        def failing_callback(download_id, progress):
+        def failing_callback(download_id: UUID, progress: DownloadProgress, **kwargs: Any) -> None:
             msg = "Callback failed"
             raise ValueError(msg)
 
@@ -186,7 +187,7 @@ class TestProgressCallbackExceptions:
         tracker = ProgressTracker()
         download_id = uuid4()
 
-        def exit_callback(download_id, progress):
+        def exit_callback(download_id: UUID, progress: DownloadProgress, **kwargs: Any) -> None:
             msg = "Exiting"
             raise SystemExit(msg)
 
@@ -201,7 +202,7 @@ class TestProgressCallbackExceptions:
         tracker = ProgressTracker()
         download_id = uuid4()
 
-        def interrupt_callback(download_id, progress):
+        def interrupt_callback(download_id: UUID, progress: DownloadProgress, **kwargs: Any) -> None:
             msg = "User interrupted"
             raise KeyboardInterrupt(msg)
 
@@ -216,7 +217,7 @@ class TestProgressCallbackExceptions:
         tracker = ProgressTracker()
         download_id = uuid4()
 
-        def failing_callback(download_id, progress):
+        def failing_callback(download_id: UUID, progress: DownloadProgress, **kwargs: Any) -> None:
             msg = "Always fails"
             raise ValueError(msg)
 

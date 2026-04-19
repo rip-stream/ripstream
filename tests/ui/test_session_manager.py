@@ -9,7 +9,7 @@ and use an injected temporary database to avoid touching global state.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -129,7 +129,7 @@ def test_save_gracefully_handles_uninitialized_db(
     class DummyDB:  # Minimal stub to satisfy type usage in manager
         session_factory = None
 
-    manager = WorkingSessionManager(db_manager=DummyDB())  # type: ignore[arg-type]
+    manager = WorkingSessionManager(db_manager=cast("DatabaseManager", DummyDB()))
     # Should not raise
     manager.save({"last_url": "x"})
 

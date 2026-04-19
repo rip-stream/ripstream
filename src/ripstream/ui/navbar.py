@@ -155,18 +155,22 @@ class NavigationBar(QToolBar):
         self.addSeparator()
 
         # View toggle buttons
-        self.discography_action = self.addAction("Discography")
-        self.discography_action.setIcon(qta.icon("fa5s.music"))
-        self.discography_action.setCheckable(True)
-        self.discography_action.setChecked(True)  # Default view
-        self.discography_action.triggered.connect(
+        discography_action = self.addAction("Discography")
+        assert discography_action is not None  # noqa: S101 - PyQt stubs over-broad
+        self.discography_action = discography_action
+        discography_action.setIcon(qta.icon("fa5s.music"))
+        discography_action.setCheckable(True)
+        discography_action.setChecked(True)  # Default view
+        discography_action.triggered.connect(
             lambda: self.switch_view("discography")
         )
 
-        self.downloads_action = self.addAction("Downloads")
-        self.downloads_action.setIcon(qta.icon("fa5s.download"))
-        self.downloads_action.setCheckable(True)
-        self.downloads_action.triggered.connect(lambda: self.switch_view("downloads"))
+        downloads_action = self.addAction("Downloads")
+        assert downloads_action is not None  # noqa: S101 - PyQt stubs over-broad
+        self.downloads_action = downloads_action
+        downloads_action.setIcon(qta.icon("fa5s.download"))
+        downloads_action.setCheckable(True)
+        downloads_action.triggered.connect(lambda: self.switch_view("downloads"))
 
     def switch_view(self, view_name: str):
         """Switch between different views."""

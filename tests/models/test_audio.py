@@ -36,7 +36,7 @@ class TestAudioInfo:
         assert sample_audio_info.bitrate == 1411
         assert sample_audio_info.codec == "FLAC"
         assert sample_audio_info.container == "FLAC"
-        assert sample_audio_info.duration_seconds == 240.5
+        assert sample_audio_info.duration_seconds == pytest.approx(240.5)
         assert sample_audio_info.file_size_bytes == 30720000
         assert sample_audio_info.is_lossless is True
         assert sample_audio_info.is_explicit is False
@@ -387,7 +387,7 @@ class TestAudioIntegration:
         )
 
         assert large_file_info.duration_formatted == "120:00"
-        assert large_file_info.file_size_mb == 1024.0
+        assert large_file_info.file_size_mb == pytest.approx(1024.0)
 
         # Test with very small file
         small_file_info = AudioInfo(
@@ -398,7 +398,9 @@ class TestAudioIntegration:
         )
 
         assert small_file_info.duration_formatted == "00:01"
-        assert small_file_info.file_size_mb == 0.0  # Rounded to 2 decimal places
+        assert small_file_info.file_size_mb == pytest.approx(
+            0.0
+        )  # Rounded to 2 decimal places
 
 
 class TestAudioEdgeCases:
@@ -415,7 +417,7 @@ class TestAudioEdgeCases:
         )
 
         assert info.duration_formatted == "00:00"
-        assert info.file_size_mb == 0.0
+        assert info.file_size_mb == pytest.approx(0.0)
         assert info.bitrate == 0
         assert info.sampling_rate == 0
 

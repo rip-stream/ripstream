@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 import pytest
 
@@ -38,7 +38,7 @@ def _make_provider_with_api(
 
     Returns a provider with `_authenticated=True` and `client` set to the dummy.
     """
-    client: _ClientLike = SimpleNamespace(**methods)  # type: ignore[assignment]
+    client = cast("_ClientLike", SimpleNamespace(**methods))
     provider = DeezerMetadataProvider(credentials={})
     provider.client = client  # type: ignore[assignment]
     provider._authenticated = True

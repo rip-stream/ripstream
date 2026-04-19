@@ -60,10 +60,10 @@ class DeezerMetadataProvider(BaseMetadataProvider):
 
     async def fetch_artist_metadata(self, artist_id: str) -> MetadataResult:
         """Fetch artist metadata including albums, playlists, and tracks."""
-        self._ensure_ready()
+        client = self._ensure_ready()
 
         # Fetch artist and album listing using resources
-        artist_res = await asyncio.to_thread(self.client.get_artist, artist_id)
+        artist_res = await asyncio.to_thread(client.get_artist, artist_id)
         albums_page = await asyncio.to_thread(artist_res.get_albums)
         album_items = list(albums_page)
 
@@ -136,9 +136,9 @@ class DeezerMetadataProvider(BaseMetadataProvider):
 
     async def fetch_album_metadata(self, album_id: str) -> MetadataResult:
         """Fetch album metadata including all tracks."""
-        self._ensure_ready()
+        client = self._ensure_ready()
 
-        album_res = await asyncio.to_thread(self.client.get_album, album_id)
+        album_res = await asyncio.to_thread(client.get_album, album_id)
         tracks_page = await asyncio.to_thread(album_res.get_tracks)
         track_resources = list(tracks_page)
         tracks_raw: list[dict] = [t.as_dict() for t in track_resources]
@@ -205,9 +205,9 @@ class DeezerMetadataProvider(BaseMetadataProvider):
 
     async def fetch_track_metadata(self, track_id: str) -> MetadataResult:
         """Fetch individual track metadata."""
-        self._ensure_ready()
+        client = self._ensure_ready()
 
-        track_res = await asyncio.to_thread(self.client.get_track, track_id)
+        track_res = await asyncio.to_thread(client.get_track, track_id)
         track_dict = track_res.as_dict()
         item = _build_ui_track_from_deezer_track(
             track_dict, track_dict.get("album", {}) or {}, fallback_track_number=1
@@ -226,9 +226,9 @@ class DeezerMetadataProvider(BaseMetadataProvider):
 
     async def fetch_playlist_metadata(self, playlist_id: str) -> MetadataResult:
         """Fetch playlist metadata including all tracks."""
-        self._ensure_ready()
+        client = self._ensure_ready()
 
-        playlist_res = await asyncio.to_thread(self.client.get_playlist, playlist_id)
+        playlist_res = await asyncio.to_thread(client.get_playlist, playlist_id)
         tracks_page = await asyncio.to_thread(playlist_res.get_tracks)
         track_resources = list(tracks_page)
         track_data = [t.as_dict() for t in track_resources]
@@ -271,10 +271,23 @@ class DeezerMetadataProvider(BaseMetadataProvider):
     # --------------------
     # Internal helpers
     # --------------------
-    def _ensure_ready(self) -> None:
+    def _ensure_ready(self) -> Any:
+        """Return the authenticated client, raising if not ready.
+
+        Returns
+        -------
+        Any
+            The initialized Deezer client.
+
+        Raises
+        ------
+        RuntimeError
+            If the provider has not authenticated yet.
+        """
         if not self._authenticated or self.client is None:
             msg = "Not authenticated with Deezer or client not initialized"
             raise RuntimeError(msg)
+        return self.client
 
 
 def _format_duration(total_seconds: float | None) -> str | None:

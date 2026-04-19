@@ -22,6 +22,7 @@ import aiofiles
 import aiohttp
 import deezer
 
+from ripstream.core.aio_path import path_mkdir
 from ripstream.downloader.base import DownloadableContent, DownloadResult
 from ripstream.downloader.enums import ContentType
 from ripstream.downloader.exceptions import NetworkError
@@ -29,9 +30,12 @@ from ripstream.downloader.providers.base import (
     BaseDownloadProvider,
     DownloadProviderResult,
 )
+from ripstream.downloader.session import DownloadSession
 from ripstream.models.enums import StreamingSource
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ripstream.downloader.config import DownloaderConfig
     from ripstream.downloader.session import SessionManager
 
@@ -101,7 +105,7 @@ class DeezerDownloadProvider(BaseDownloadProvider):
         if self.client is None:
             msg = "Client not initialized"
             raise RuntimeError(msg)
-        track_res = await asyncio.to_thread(self.client.get_track, track_id)
+        track_res = await asyncio.to_thread(self.client.get_track, int(track_id))
         track = track_res.as_dict()
         title = track.get("title") or f"Track_{track_id}"
         artist = (track.get("artist") or {}).get("name")
@@ -111,12 +115,13 @@ class DeezerDownloadProvider(BaseDownloadProvider):
             msg = "Preview URL not available for this track"
             raise RuntimeError(msg)
 
-        # Try to prefetch size/head info via session manager
+        # Try to prefetch size/head info via a download session
         expected_size: int | None = None
         try:
-            info = await self.session_manager.get_content_info(preview_url)
+            download_session = DownloadSession(self.session_manager, self.service_name)
+            info = await download_session.get_content_info(preview_url)
             expected_size = info.get("size")
-        except NetworkError:
+        except (NetworkError, AttributeError, TypeError):
             # Non-fatal; proceed without size
             expected_size = None
 
@@ -159,7 +164,7 @@ class DeezerDownloadProvider(BaseDownloadProvider):
         content_id: str,
         content_type: ContentType,
         download_directory: str | None = None,
-        _progress_callback=None,
+        progress_callback: Callable[[int], None] | None = None,  # noqa: ARG002
     ) -> DownloadProviderResult:
         """Download the specified content (track preview)."""
         if content_type != ContentType.TRACK:
@@ -174,7 +179,7 @@ class DeezerDownloadProvider(BaseDownloadProvider):
 
             # Resolve directory and target path
             base_dir = Path(download_directory or self.config.download_directory)
-            base_dir.mkdir(parents=True, exist_ok=True)
+            await path_mkdir(base_dir, parents=True, exist_ok=True)
             file_path = base_dir / content.get_safe_filename()
 
             # Download preview

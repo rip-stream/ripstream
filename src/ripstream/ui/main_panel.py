@@ -137,7 +137,8 @@ class MainPanel(QWidget):
         """Show or hide loading state for current view."""
         # This could be enhanced to show a loading overlay
         current_widget = self.stacked_widget.currentWidget()
-        current_widget.setEnabled(not loading)
+        if current_widget is not None:
+            current_widget.setEnabled(not loading)
 
     def show_error_message(self, message: str):
         """Show an error message in the current view."""
@@ -153,6 +154,8 @@ class MainPanel(QWidget):
         # Update stacked widget
         while self.stacked_widget.count() > 0:
             widget = self.stacked_widget.widget(0)
+            if widget is None:
+                break
             self.stacked_widget.removeWidget(widget)
             widget.deleteLater()
 

@@ -96,21 +96,23 @@ class TestProgressIntegration:
 
     def test_progress_tracker_integration(self):
         """Test that progress tracker works correctly."""
-        from ripstream.downloader.progress import ProgressTracker
+        from typing import Any
+        from uuid import UUID, uuid4
+
+        from ripstream.downloader.progress import DownloadProgress, ProgressTracker
 
         tracker = ProgressTracker()
 
-        # Test callback registration
         callback_called = False
 
-        def test_callback(download_id, progress):
+        def test_callback(
+            download_id: UUID, progress: DownloadProgress, **kwargs: Any
+        ) -> None:
             nonlocal callback_called
             callback_called = True
 
         tracker.add_callback(test_callback)
 
-        # Test progress tracking
-        from uuid import uuid4
 
         download_id = uuid4()
         tracker.start_tracking(download_id, 1000)

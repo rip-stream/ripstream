@@ -133,7 +133,7 @@ def test_restore_session_sets_remove_state(window: MainWindow, monkeypatch):
         def load(self):
             return state
 
-    window.session_manager = DummySM()
+    window.session_manager = DummySM()  # ty: ignore[invalid-assignment]
 
     # Stub URL parser and favorites
     from ripstream.core.url_parser import ParsedURL
@@ -188,8 +188,12 @@ def test_gallery_icon_size_uses_constants(window: MainWindow):
     # Find the first toolbutton in the gallery widget action
     actions = view.favorites_menu.actions()
     assert actions
-    gallery_widget = actions[0].defaultWidget()
-    from PyQt6.QtWidgets import QToolButton
+    from PyQt6.QtWidgets import QToolButton, QWidgetAction
+
+    first_action = actions[0]
+    assert isinstance(first_action, QWidgetAction)
+    gallery_widget = first_action.defaultWidget()
+    assert gallery_widget is not None
 
     buttons = gallery_widget.findChildren(QToolButton)
     assert buttons

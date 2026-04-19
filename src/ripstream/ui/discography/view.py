@@ -400,16 +400,16 @@ class DiscographyView(QWidget):
     def _snapshot_scroll_positions(self) -> dict[str, int]:
         grid_scrollbar = getattr(self.grid_view, "verticalScrollBar", None)
         list_scrollbar = getattr(self.list_view, "verticalScrollBar", None)
-        grid_val = (
-            self.grid_view.verticalScrollBar().value()
-            if callable(grid_scrollbar)
-            else 0
-        )
-        list_val = (
-            self.list_view.verticalScrollBar().value()
-            if callable(list_scrollbar)
-            else 0
-        )
+        grid_val = 0
+        if callable(grid_scrollbar):
+            scrollbar = self.grid_view.verticalScrollBar()
+            if scrollbar is not None:
+                grid_val = scrollbar.value()
+        list_val = 0
+        if callable(list_scrollbar):
+            scrollbar = self.list_view.verticalScrollBar()
+            if scrollbar is not None:
+                list_val = scrollbar.value()
         return {"grid_scroll": grid_val, "list_scroll": list_val}
 
     def _snapshot_selection(self) -> dict[str, Any]:
@@ -470,9 +470,13 @@ class DiscographyView(QWidget):
 
     def _restore_scrolls(self, snapshot: dict[str, Any]) -> None:
         grid_scroll = int(snapshot.get("grid_scroll", 0) or 0)
-        self.grid_view.verticalScrollBar().setValue(grid_scroll)
+        grid_scrollbar = self.grid_view.verticalScrollBar()
+        if grid_scrollbar is not None:
+            grid_scrollbar.setValue(grid_scroll)
         list_scroll = int(snapshot.get("list_scroll", 0) or 0)
-        self.list_view.verticalScrollBar().setValue(list_scroll)
+        list_scrollbar = self.list_view.verticalScrollBar()
+        if list_scrollbar is not None:
+            list_scrollbar.setValue(list_scroll)
 
     def _restore_selection(self, selected_id: Any) -> None:
         if not selected_id:
@@ -644,7 +648,7 @@ class DiscographyView(QWidget):
         self.pending_artwork.clear()
         self._consumed_artwork_ids.clear()
 
-    def set_content(self, metadata: dict[str, Any]):
+    def set_content(self, metadata: dict[str, Any] | None):
         """Set content based on metadata type."""
         if metadata is None:
             return

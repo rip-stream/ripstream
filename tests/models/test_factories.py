@@ -3,6 +3,7 @@
 
 """Unit tests for models/factories.py module."""
 
+from typing import cast
 from unittest.mock import Mock, patch
 
 import pytest
@@ -499,7 +500,9 @@ class TestSoundCloudModelFactory:
 
             call_args = mock_create.call_args
             transformed_data = call_args[0][2]
-            assert transformed_data["duration"] == 180.0  # Converted from 180000ms
+            assert transformed_data["duration"] == pytest.approx(
+                180.0
+            )  # Converted from 180000ms
             assert transformed_data["genres"] == ["Hip Hop"]
             assert transformed_data["is_explicit"] is True
 
@@ -565,9 +568,8 @@ class TestGetFactoryForSource:
 
     def test_get_factory_for_unknown_source(self):
         """Test get_factory_for_source returns ModelFactory for unknown sources."""
-        # Create a mock unknown source
-        unknown_source = Mock()
-        result = get_factory_for_source(unknown_source)  # type: ignore[invalid-argument-type]
+        unknown_source = cast("StreamingSource", Mock())
+        result = get_factory_for_source(unknown_source)
         assert result == ModelFactory
 
     def test_get_factory_for_none(self):

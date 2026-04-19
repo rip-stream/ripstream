@@ -662,7 +662,7 @@ class TestQobuzMetadataProvider:
         )
 
         # Mock the fetch_album_metadata method
-        provider_with_credentials.fetch_album_metadata = AsyncMock(  # type: ignore[invalid-assignment]
+        provider_with_credentials.fetch_album_metadata = AsyncMock(  # ty: ignore[invalid-assignment]
             return_value=mock_album_metadata
         )
 
@@ -711,7 +711,7 @@ class TestQobuzMetadataProvider:
         self, provider_with_credentials: QobuzMetadataProvider
     ):
         """Test cleanup when session_manager doesn't exist."""
-        delattr(provider_with_credentials, "session_manager")
+        del provider_with_credentials.session_manager
 
         # Should not raise an exception
         await provider_with_credentials.cleanup()

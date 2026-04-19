@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -17,6 +18,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -229,12 +231,43 @@ class ServicesTab(BasePreferenceTab):
         group = QGroupBox("Qobuz")
         layout = QFormLayout(group)
 
+        notice = QLabel(
+            "Qobuz no longer accepts email/password from third-party clients. "
+            "Use 'Login with browser' to capture a session token, then click "
+            "OK to save it."
+        )
+        notice.setWordWrap(True)
+        layout.addRow(notice)
+
+        self.qobuz_use_token = QCheckBox(
+            "Use auth token (recommended - email/password no longer works)"
+        )
+        self.qobuz_use_token.toggled.connect(self._on_qobuz_token_mode_toggled)
+        layout.addRow(self.qobuz_use_token)
+
         self.qobuz_email = QLineEdit()
-        layout.addRow("Email/User ID:", self.qobuz_email)
+        self.qobuz_email_label = QLabel("Email:")
+        layout.addRow(self.qobuz_email_label, self.qobuz_email)
 
         self.qobuz_password = QLineEdit()
         self.qobuz_password.setEchoMode(QLineEdit.EchoMode.Password)
-        layout.addRow("Password:", self.qobuz_password)
+        self.qobuz_password_label = QLabel("Password:")
+        layout.addRow(self.qobuz_password_label, self.qobuz_password)
+
+        self.qobuz_user_id = QLineEdit()
+        self.qobuz_user_id.setPlaceholderText("Captured from browser login")
+        self.qobuz_user_id_label = QLabel("User ID:")
+        layout.addRow(self.qobuz_user_id_label, self.qobuz_user_id)
+
+        self.qobuz_token = QLineEdit()
+        self.qobuz_token.setEchoMode(QLineEdit.EchoMode.Password)
+        self.qobuz_token.setPlaceholderText("Captured from browser login")
+        self.qobuz_token_label = QLabel("Auth Token:")
+        layout.addRow(self.qobuz_token_label, self.qobuz_token)
+
+        self.qobuz_browser_login = QPushButton("Login with browser…")
+        self.qobuz_browser_login.clicked.connect(self._launch_qobuz_browser_login)
+        layout.addRow(self.qobuz_browser_login)
 
         self.qobuz_quality = QComboBox()
         self.qobuz_quality.addItems([
@@ -248,7 +281,6 @@ class ServicesTab(BasePreferenceTab):
         self.qobuz_booklets = QCheckBox("Download booklet PDFs")
         layout.addRow(self.qobuz_booklets)
 
-        # Add secrets display (read-only)
         secrets_label = QLabel("API Secrets:")
         secrets_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
         layout.addRow(secrets_label)
@@ -262,6 +294,64 @@ class ServicesTab(BasePreferenceTab):
         layout.addRow("", self.qobuz_secrets_list)
 
         return group
+
+    def _on_qobuz_token_mode_toggled(self, use_token: bool) -> None:
+        """Toggle visibility of email/password vs user_id/token fields.
+
+        Parameters
+        ----------
+        use_token : bool
+            ``True`` when the user enables token-based authentication.
+        """
+        for widget in (
+            self.qobuz_email_label,
+            self.qobuz_email,
+            self.qobuz_password_label,
+            self.qobuz_password,
+        ):
+            widget.setVisible(not use_token)
+        for widget in (
+            self.qobuz_user_id_label,
+            self.qobuz_user_id,
+            self.qobuz_token_label,
+            self.qobuz_token,
+        ):
+            widget.setVisible(use_token)
+
+    def _launch_qobuz_browser_login(self) -> None:
+        """Open the embedded browser dialog and capture a Qobuz token.
+
+        On success, the user id and token captured from the browser are
+        copied into the form and token mode is enabled. Saving the
+        preferences then persists the credentials to the config.
+        """
+        try:
+            from ripstream.ui.qobuz_login_dialog import QobuzLoginDialog
+        except ImportError as exc:
+            QMessageBox.critical(
+                self,
+                "Browser login unavailable",
+                (
+                    "PyQt6-WebEngine is required for browser-based Qobuz "
+                    f"login but is not installed: {exc}"
+                ),
+            )
+            return
+
+        dialog = QobuzLoginDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        if not dialog.captured_user_id or not dialog.captured_token:
+            return
+
+        self.qobuz_use_token.setChecked(True)
+        self.qobuz_user_id.setText(dialog.captured_user_id)
+        self.qobuz_token.setText(dialog.captured_token)
+        QMessageBox.information(
+            self,
+            "Qobuz login captured",
+            "Session token captured from browser. Click OK to save it.",
+        )
 
     def create_tidal_group(self):
         """Create Tidal authentication group."""
@@ -356,9 +446,23 @@ class ServicesTab(BasePreferenceTab):
 
     def load_config(self):
         """Load service configurations."""
-        # Qobuz
-        self.qobuz_email.setText(decode_secret(self.config.qobuz.email_or_userid))
-        self.qobuz_password.setText(decode_secret(self.config.qobuz.password_or_token))
+        use_token = bool(self.config.qobuz.use_auth_token)
+        self.qobuz_use_token.setChecked(use_token)
+        self._on_qobuz_token_mode_toggled(use_token)
+
+        decoded_userid = decode_secret(self.config.qobuz.email_or_userid)
+        decoded_secret = decode_secret(self.config.qobuz.password_or_token)
+        if use_token:
+            self.qobuz_user_id.setText(decoded_userid)
+            self.qobuz_token.setText(decoded_secret)
+            self.qobuz_email.clear()
+            self.qobuz_password.clear()
+        else:
+            self.qobuz_email.setText(decoded_userid)
+            self.qobuz_password.setText(decoded_secret)
+            self.qobuz_user_id.clear()
+            self.qobuz_token.clear()
+
         self.qobuz_quality.setCurrentIndex(self.config.qobuz.quality - 1)
         self.qobuz_booklets.setChecked(self.config.qobuz.download_booklets)
 
@@ -397,9 +501,20 @@ class ServicesTab(BasePreferenceTab):
 
     def save_config(self):
         """Save service configurations with encoded secrets."""
-        # Qobuz
-        self.config.qobuz.email_or_userid = encode_secret(self.qobuz_email.text())
-        self.config.qobuz.password_or_token = encode_secret(self.qobuz_password.text())
+        use_token = self.qobuz_use_token.isChecked()
+        self.config.qobuz.use_auth_token = use_token
+        if use_token:
+            self.config.qobuz.email_or_userid = encode_secret(
+                self.qobuz_user_id.text().strip()
+            )
+            self.config.qobuz.password_or_token = encode_secret(
+                self.qobuz_token.text().strip()
+            )
+        else:
+            self.config.qobuz.email_or_userid = encode_secret(self.qobuz_email.text())
+            self.config.qobuz.password_or_token = encode_secret(
+                self.qobuz_password.text()
+            )
         self.config.qobuz.quality = self.qobuz_quality.currentIndex() + 1
         self.config.qobuz.download_booklets = self.qobuz_booklets.isChecked()
 

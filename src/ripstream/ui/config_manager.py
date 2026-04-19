@@ -72,6 +72,9 @@ class ConfigManager:
         """Get the current configuration."""
         if not self.config:
             self.load_config()
+        if self.config is None:
+            msg = "Failed to load configuration"
+            raise RuntimeError(msg)
         return self.config
 
     def update_config(self, new_config: UserConfig) -> None:

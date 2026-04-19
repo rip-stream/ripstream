@@ -16,6 +16,8 @@ import aiofiles
 import aiohttp
 from PIL import Image
 
+from ripstream.core.aio_path import path_exists, path_mkdir, path_unlink
+
 logger = logging.getLogger(__name__)
 
 # Global set to track temporary artwork directories for cleanup
@@ -459,9 +461,9 @@ async def download_artwork(
                 logger.exception("Error downloading artwork")
                 # Clean up any partial files
                 for path in [embed_cover_path, saved_cover_path]:
-                    if path and Path(path).exists():
+                    if path and await path_exists(path):
                         with contextlib.suppress(OSError):
-                            Path(path).unlink()
+                            await path_unlink(path)
                 return None, None
 
             # Apply size restrictions if configured
@@ -485,7 +487,7 @@ async def _download_image(session: Any, url: str, file_path: str) -> None:
                 response.raise_for_status()
 
                 # Ensure directory exists
-                Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+                await path_mkdir(Path(file_path).parent, parents=True, exist_ok=True)
 
                 temp_path = f"{file_path}.tmp.{uuid4().hex}"
                 try:
@@ -525,27 +527,27 @@ async def _stream_to_file(response: Any, temp_path: str) -> None:
 async def _finalize_temp_file(temp_path: str, file_path: str) -> None:
     """Atomically move a downloaded temp file into final location, handling races."""
     # Handle case where target file already exists
-    if Path(file_path).exists():
+    if await path_exists(file_path):
         logger.debug("Target file already exists, removing temp file: %s", file_path)
         await _cleanup_temp_file(temp_path)
         return
 
     try:
-        Path(temp_path).rename(file_path)
+        await asyncio.to_thread(Path(temp_path).rename, file_path)
     except FileExistsError:
         # Another concurrent downloader won the race; remove our temp
         with contextlib.suppress(OSError):
-            Path(temp_path).unlink()
+            await path_unlink(temp_path)
     else:
         logger.debug("Downloaded artwork saved to %s", file_path)
 
 
 async def _cleanup_temp_file(temp_path: str) -> None:
     """Attempt to remove a temporary file with brief retries on transient errors."""
-    if Path(temp_path).exists():
+    if await path_exists(temp_path):
         for _ in range(3):
             try:
-                Path(temp_path).unlink()
+                await path_unlink(temp_path)
                 break
             except OSError:
                 await asyncio.sleep(0.1)

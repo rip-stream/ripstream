@@ -4,6 +4,7 @@
 """Enhanced tests for Qobuz downloader with comprehensive coverage."""
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -804,7 +805,7 @@ class TestQobuzCredentialsModel:
     )
     def test_credentials_field_validation(self, field_name, field_value):
         """Test individual field validation."""
-        base_data = {
+        base_data: dict[str, Any] = {
             "email_or_userid": "test@example.com",
             "password_or_token": "password123",
             "app_id": None,

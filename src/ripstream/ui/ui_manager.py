@@ -57,6 +57,9 @@ class UIManager:
     def _setup_status_bar(self):
         """Set up the status bar."""
         self.status_bar = self.main_window.statusBar()
+        if self.status_bar is None:
+            msg = "Main window has no status bar"
+            raise RuntimeError(msg)
         self.status_label = QLabel("Ready")
         self.status_bar.addWidget(self.status_label)
 
@@ -158,14 +161,54 @@ class UIManager:
         self.settings.setValue("geometry", self.main_window.saveGeometry())
         self.settings.setValue("windowState", self.main_window.saveState())
 
-    def get_discography_view(self) -> DiscographyView | None:
-        """Get the discography view."""
+    def get_discography_view(self) -> DiscographyView:
+        """Get the discography view.
+
+        Raises
+        ------
+        RuntimeError
+            If the UI has not been set up yet.
+        """
+        if self.discography_view is None:
+            msg = "Discography view not initialized; call setup_ui() first"
+            raise RuntimeError(msg)
         return self.discography_view
 
-    def get_downloads_view(self) -> DownloadsHistoryView | None:
-        """Get the downloads view."""
+    def get_downloads_view(self) -> DownloadsHistoryView:
+        """Get the downloads view.
+
+        Raises
+        ------
+        RuntimeError
+            If the UI has not been set up yet.
+        """
+        if self.downloads_view is None:
+            msg = "Downloads view not initialized; call setup_ui() first"
+            raise RuntimeError(msg)
         return self.downloads_view
 
-    def get_navbar(self) -> NavigationBar | None:
-        """Get the navigation bar."""
+    def get_navbar(self) -> NavigationBar:
+        """Get the navigation bar.
+
+        Raises
+        ------
+        RuntimeError
+            If the UI has not been set up yet.
+        """
+        if self.navbar is None:
+            msg = "Navbar not initialized; call setup_ui() first"
+            raise RuntimeError(msg)
         return self.navbar
+
+    def get_main_panel(self) -> MainPanel:
+        """Get the main panel.
+
+        Raises
+        ------
+        RuntimeError
+            If the UI has not been set up yet.
+        """
+        if self.main_panel is None:
+            msg = "Main panel not initialized; call setup_ui() first"
+            raise RuntimeError(msg)
+        return self.main_panel

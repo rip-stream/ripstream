@@ -158,12 +158,12 @@ class AlbumStats(MetadataContainer):
 
 def _create_covers() -> Covers:
     """Return a default Covers instance."""
-    return Covers()  # type: ignore
+    return Covers()
 
 
 def _create_album_stats() -> AlbumStats:
     """Return a default AlbumStats instance."""
-    return AlbumStats()  # type: ignore
+    return AlbumStats()
 
 
 class Album(DownloadableMedia, SearchableMedia):
@@ -208,7 +208,7 @@ class Album(DownloadableMedia, SearchableMedia):
         source: StreamingSource,
         album_id: str,
         data: dict[str, Any],
-        **kwargs: object,
+        **kwargs: Any,
     ) -> "Album":
         """Create an Album from streaming source data."""
         # Extract basic info
@@ -247,13 +247,13 @@ class Album(DownloadableMedia, SearchableMedia):
         )
 
         # Extract covers
-        covers = data.get("covers", Covers())  # type: ignore
+        covers = data.get("covers", Covers())
         if not isinstance(covers, Covers):
             # If covers is not already a Covers object, create an empty one
-            covers = Covers()  # type: ignore
+            covers = Covers()
 
         # Extract stats
-        stats = AlbumStats(  # type: ignore
+        stats = AlbumStats(
             popularity_score=data.get("popularity"),
             rating=data.get("rating"),
             review_count=data.get("review_count"),

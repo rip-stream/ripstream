@@ -74,7 +74,7 @@ class ArtistStats(MetadataContainer):
             raise ValueError(msg)
         return v
 
-    def update_stats(self, **kwargs: object) -> None:
+    def update_stats(self, **kwargs: Any) -> None:
         """Update statistics from source data."""
         for key, value in kwargs.items():
             if hasattr(self, key):
@@ -113,7 +113,7 @@ class Artist(DownloadableMedia, SearchableMedia):
         source: StreamingSource,
         artist_id: str,
         data: dict[str, Any],
-        **kwargs: object,
+        **kwargs: Any,
     ) -> "Artist":
         """Create an Artist from streaming source data."""
         # Extract basic info
@@ -198,7 +198,7 @@ class Artist(DownloadableMedia, SearchableMedia):
     def matches_search(self, query: str) -> bool:
         """Check if the artist matches a search query."""
         query_lower = query.lower()
-        return (
+        return bool(
             query_lower in self.info.name.lower()
             or (self.info.sort_name and query_lower in self.info.sort_name.lower())
             or any(query_lower in genre.lower() for genre in self.info.genres)

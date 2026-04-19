@@ -157,11 +157,31 @@ class QobuzClient:
         self.logged_in = False
 
     async def authenticate(self, credentials: QobuzCredentials) -> bool:
-        """Authenticate with Qobuz."""
+        """Authenticate with Qobuz.
+
+        Parameters
+        ----------
+        credentials : QobuzCredentials
+            Credentials to authenticate with. When ``use_auth_token`` is
+            ``True`` ``email_or_userid`` must hold the Qobuz user id and
+            ``password_or_token`` the ``user_auth_token`` previously
+            captured from a logged-in browser session.
+
+        Returns
+        -------
+        bool
+            ``True`` when authentication succeeded.
+
+        Raises
+        ------
+        AuthenticationError
+            When credentials are missing or rejected by Qobuz.
+        """
         self.credentials = credentials
 
         try:
-            # Get app ID and secrets if not provided
+            self._validate_credentials(credentials)
+
             if not credentials.app_id or not credentials.secrets:
                 logger.info("App ID/secrets not found, fetching from web player")
                 session = await self.session_manager.get_session("qobuz")
@@ -171,47 +191,27 @@ class QobuzClient:
                     credentials.secrets,
                 ) = await spoofer.get_app_id_and_secrets()
 
-                # Save the retrieved secrets to config if callback is provided
                 if self.config_update_callback and credentials.secrets:
                     logger.info("Saving retrieved secrets to config")
                     self.config_update_callback(credentials.app_id, credentials.secrets)
 
-            # Prepare login parameters
-            if credentials.use_auth_token:
-                params = {
-                    "user_id": credentials.email_or_userid,
-                    "user_auth_token": credentials.password_or_token,
-                    "app_id": str(credentials.app_id),
-                }
-            else:
-                params = {
-                    "email": credentials.email_or_userid,
-                    "password": credentials.password_or_token,
-                    "app_id": str(credentials.app_id),
-                }
+            params = self._build_login_params(credentials)
+            logger.debug("Qobuz login request: %s", self._redact_auth_payload(params))
 
-            # Perform login
             status, resp = await self._api_request("user/login", params)
+            logger.debug(
+                "Qobuz login response: status=%s body=%s",
+                status,
+                self._redact_auth_payload(resp),
+            )
 
-            if status == 401:
-                msg = f"Invalid credentials: {params}"
-                raise_error(AuthenticationError, msg)
-            if status == 400:
-                msg = f"Invalid app ID: {params}"
-                raise_error(AuthenticationError, msg)
-            if status != 200:
-                msg = f"Login failed with status {status}: {resp}"
-                raise_error(AuthenticationError, msg)
+            self._raise_for_login_status(status, resp, credentials)
 
-            # Check if account is eligible
             if not resp["user"]["credential"]["parameters"]:
-                msg = "Free accounts are not eligible to download tracks"
+                msg = "Free Qobuz accounts are not eligible to download tracks"
                 raise_error(AuthenticationError, msg)
 
-            # Store auth token
             self.user_auth_token = resp["user_auth_token"]
-
-            # Get valid secret
             self.secret = await self._get_valid_secret(credentials.secrets)
 
             self.logged_in = True
@@ -222,6 +222,111 @@ class QobuzClient:
             raise
         else:
             return True
+
+    @staticmethod
+    def _validate_credentials(credentials: QobuzCredentials) -> None:
+        """Validate that the required credential fields are populated.
+
+        Parameters
+        ----------
+        credentials : QobuzCredentials
+            Credentials to validate.
+
+        Raises
+        ------
+        AuthenticationError
+            If the required fields for the selected auth mode are missing.
+        """
+        if credentials.email_or_userid and credentials.password_or_token:
+            return
+
+        if credentials.use_auth_token:
+            msg = (
+                "Qobuz token authentication requires both a user id and a "
+                "user_auth_token. Use 'Login with browser' in Preferences "
+                "to capture them from a logged-in Qobuz session."
+            )
+        else:
+            msg = (
+                "Qobuz email/password authentication is no longer accepted "
+                "by Qobuz. Use 'Login with browser' in Preferences to "
+                "capture a user_auth_token instead."
+            )
+        raise_error(AuthenticationError, msg)
+
+    @staticmethod
+    def _build_login_params(credentials: QobuzCredentials) -> dict[str, str]:
+        """Build the request parameters for the ``user/login`` endpoint."""
+        if credentials.use_auth_token:
+            return {
+                "user_id": credentials.email_or_userid,
+                "user_auth_token": credentials.password_or_token,
+                "app_id": str(credentials.app_id),
+            }
+        return {
+            "email": credentials.email_or_userid,
+            "password": credentials.password_or_token,
+            "app_id": str(credentials.app_id),
+        }
+
+    @staticmethod
+    def _raise_for_login_status(
+        status: int, resp: dict[str, Any], credentials: QobuzCredentials
+    ) -> None:
+        """Translate non-200 ``user/login`` responses into clear errors.
+
+        Parameters
+        ----------
+        status : int
+            HTTP status code returned by Qobuz.
+        resp : dict[str, Any]
+            Decoded JSON response body.
+        credentials : QobuzCredentials
+            The credentials that were used for the login attempt.
+
+        Raises
+        ------
+        AuthenticationError
+            When the response indicates a recoverable authentication
+            problem (rejected credentials, invalid app id, etc.).
+        """
+        if status == 200:
+            return
+        if status == 401:
+            if credentials.use_auth_token:
+                msg = (
+                    "Qobuz rejected the user_auth_token. The token has likely "
+                    "expired - re-run 'Login with browser' to refresh it."
+                )
+            else:
+                msg = (
+                    "Qobuz rejected the email/password login. Qobuz no longer "
+                    "accepts plain credentials for third-party clients; use "
+                    "'Login with browser' to obtain a user_auth_token."
+                )
+            raise_error(AuthenticationError, msg)
+        if status == 400:
+            msg = (
+                f"Qobuz rejected the app id ({credentials.app_id!r}). "
+                "Clear the saved app id/secrets and retry."
+            )
+            raise_error(AuthenticationError, msg)
+        message = (
+            resp.get("message", "Unknown error") if isinstance(resp, dict) else resp
+        )
+        msg = f"Qobuz login failed with status {status}: {message}"
+        raise_error(AuthenticationError, msg)
+
+    @staticmethod
+    def _redact_auth_payload(payload: Any) -> Any:
+        """Return a shallow copy of ``payload`` with sensitive values masked."""
+        if not isinstance(payload, dict):
+            return payload
+        redacted = dict(payload)
+        for key in ("password", "user_auth_token"):
+            if redacted.get(key):
+                redacted[key] = "***REDACTED***"
+        return redacted
 
     async def get_track_info(self, track_id: str) -> QobuzTrackResponse:
         """Get track information."""

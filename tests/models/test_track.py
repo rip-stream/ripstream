@@ -334,7 +334,7 @@ class TestTrack:
         assert track.credits.album_artist == "Album Artist"
         assert track.audio.quality == 2
         assert track.audio.bitrate == 320
-        assert track.popularity_score == 75.0
+        assert track.popularity_score == pytest.approx(75.0)
         assert track.album_id == "album123"
 
     def test_track_from_source_data_with_album_data(self, track_data):

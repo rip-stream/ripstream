@@ -135,6 +135,7 @@ def test_get_download_details_formats_human_values(
         from ripstream.models.database import DownloadRecord
 
         rec = s.get(DownloadRecord, download_id)
+        assert rec is not None
         rec.file_path = file_path
         s.commit()
 

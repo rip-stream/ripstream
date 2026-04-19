@@ -158,7 +158,7 @@ class Track(DownloadableMedia, SearchableMedia):
         track_id: str,
         data: dict[str, Any],
         album_data: dict[str, Any] | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> "Track":
         """Create a Track from streaming source data."""
         # Extract basic info
@@ -304,7 +304,7 @@ class Track(DownloadableMedia, SearchableMedia):
     def matches_search(self, query: str) -> bool:
         """Check if the track matches a search query."""
         query_lower = query.lower()
-        return (
+        return bool(
             query_lower in self.info.title.lower()
             or query_lower in self.credits.artist.lower()
             or (

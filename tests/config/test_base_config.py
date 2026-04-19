@@ -4,6 +4,7 @@
 """Tests for base configuration classes."""
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -92,7 +93,7 @@ class TestAuthenticatedServiceConfig:
     )
     def test_auth_field_validation(self, field_name, input_value, expected):
         """Test validation of authentication fields."""
-        config_data = {"quality": 1, field_name: input_value}
+        config_data: dict[str, Any] = {"quality": 1, field_name: input_value}
         config = AuthenticatedServiceConfig(**config_data)
         assert getattr(config, field_name) == expected
 
@@ -168,7 +169,7 @@ class TestTokenBasedServiceConfig:
     )
     def test_token_field_validation(self, field_name, input_value, expected):
         """Test validation of token fields."""
-        config_data = {"quality": 1, field_name: input_value}
+        config_data: dict[str, Any] = {"quality": 1, field_name: input_value}
         config = TokenBasedServiceConfig(**config_data)
         assert getattr(config, field_name) == expected
 
