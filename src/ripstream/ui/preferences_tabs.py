@@ -328,14 +328,7 @@ class ServicesTab(BasePreferenceTab):
         try:
             from ripstream.ui.qobuz_login_dialog import QobuzLoginDialog
         except ImportError as exc:
-            QMessageBox.critical(
-                self,
-                "Browser login unavailable",
-                (
-                    "PyQt6-WebEngine is required for browser-based Qobuz "
-                    f"login but is not installed: {exc}"
-                ),
-            )
+            self._show_webengine_error(exc)
             return
 
         dialog = QobuzLoginDialog(self)
@@ -352,6 +345,30 @@ class ServicesTab(BasePreferenceTab):
             "Qobuz login captured",
             "Session token captured from browser. Click OK to save it.",
         )
+
+    def _show_webengine_error(self, exc: ImportError) -> None:
+        """Show a context-appropriate error for a failed WebEngine import.
+
+        Parameters
+        ----------
+        exc : ImportError
+            The exception raised while importing the WebEngine modules.
+        """
+        message = str(exc)
+        if "QtWebEngineWidgets" in message or "AA_ShareOpenGLContexts" in message:
+            details = (
+                "Qt WebEngine could not be initialized. This usually means "
+                "the application started before WebEngine support was set "
+                "up. Please restart ripstream and try again. If the problem "
+                f"persists, report this error: {exc}"
+            )
+        else:
+            details = (
+                "PyQt6-WebEngine is required for browser-based Qobuz "
+                "login but could not be loaded. Install it with "
+                f"'uv pip install pyqt6-webengine'. Details: {exc}"
+            )
+        QMessageBox.critical(self, "Browser login unavailable", details)
 
     def create_tidal_group(self):
         """Create Tidal authentication group."""
