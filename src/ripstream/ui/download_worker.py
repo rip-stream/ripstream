@@ -90,6 +90,26 @@ class DownloadWorker(QThread):
         """Stop the worker thread."""
         self._running = False
 
+    def update_config(self, new_config: UserConfig) -> None:
+        """Replace the user configuration used for subsequent downloads.
+
+        Credentials and download settings are read from ``self.config``
+        each time a download is started, so updating the reference is
+        sufficient to make later downloads observe configuration changes
+        such as switching Qobuz to token-based authentication.
+
+        Parameters
+        ----------
+        new_config : UserConfig
+            The updated user configuration to apply.
+        """
+        self.config = new_config
+        try:
+            cfg_val = getattr(new_config.downloads, "max_retries", 3)
+            self._max_track_retries = max(0, int(cfg_val))
+        except (TypeError, ValueError):
+            self._max_track_retries = 3
+
     def queue_download(self, item_details: dict, download_id: str | None = None):
         """Queue a download task."""
         self._download_queue.put((item_details, download_id))

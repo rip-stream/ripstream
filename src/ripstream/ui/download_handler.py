@@ -220,6 +220,24 @@ class DownloadHandler(QObject):
         except Exception:
             logger.exception("Failed to emit downloaded albums update")
 
+    def update_config(self, new_config: UserConfig) -> None:
+        """Update configuration for the handler and all download workers.
+
+        Workers re-read credentials and download settings from
+        ``self.config`` for every download, so propagating the new
+        configuration ensures subsequent downloads pick up changes made
+        in the preferences dialog (e.g. switching Qobuz to token-based
+        authentication).
+
+        Parameters
+        ----------
+        new_config : UserConfig
+            The updated user configuration to apply.
+        """
+        self.config = new_config
+        for worker in self.download_workers:
+            worker.update_config(new_config)
+
     def cleanup(self):
         """Clean up download resources."""
         for worker in self.download_workers:
