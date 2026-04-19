@@ -341,7 +341,8 @@ class TestPreferencesIntegration:
             dialog = PreferencesDialog(UserConfig())
             assert isinstance(dialog, PreferencesDialog)
         except (RuntimeError, ValueError, TypeError) as e:
-            pytest.fail(f"Dialog creation with default config failed: {e}")
+            msg = f"Dialog creation with default config failed: {e}"
+            raise AssertionError(msg) from e
 
     def test_tab_order(self, preferences_dialog):
         """Test tab order is consistent."""

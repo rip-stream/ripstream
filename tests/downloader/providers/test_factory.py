@@ -4,7 +4,7 @@
 """Tests for download provider factory."""
 
 import contextlib
-from typing import Any
+from typing import Any, cast
 from unittest.mock import Mock
 
 import pytest
@@ -237,7 +237,7 @@ class TestDownloadProviderFactory:
         with pytest.raises(TypeError) as exc_info:
             DownloadProviderFactory.register_provider(
                 StreamingSource.TIDAL,
-                InvalidProvider,  # type: ignore[arg-type]
+                cast("type[BaseDownloadProvider]", InvalidProvider),
             )
 
         error_message = str(exc_info.value)

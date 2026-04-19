@@ -165,7 +165,7 @@ class TestDownloadService:
                 url=parsed_url_data["url"],
                 metadata={},
             )
-            service.url_parser.parse_url = Mock(return_value=mock_parsed_url)  # type: ignore[assignment]
+            service.url_parser.parse_url = Mock(return_value=mock_parsed_url)  # ty: ignore[invalid-assignment]
 
             result = await service.download_from_url(url)
 
@@ -194,11 +194,12 @@ class TestDownloadService:
             url="invalid",
             metadata={},
         )
-        service.url_parser.parse_url = Mock(return_value=mock_parsed_url)  # type: ignore[assignment]
+        service.url_parser.parse_url = Mock(return_value=mock_parsed_url)  # ty: ignore[invalid-assignment]
 
         result = await service.download_from_url("invalid_url")
 
         assert result.success is False
+        assert result.error_message is not None
         assert "Invalid URL" in result.error_message
 
     async def test_download_from_url_exception(
@@ -215,11 +216,14 @@ class TestDownloadService:
         )
 
         # Mock the URL parser to raise exception
-        service.url_parser.parse_url = Mock(side_effect=Exception("Parser failed"))  # type: ignore[assignment]
+        service.url_parser.parse_url = Mock(  # ty: ignore[invalid-assignment]
+            side_effect=Exception("Parser failed")
+        )
 
         result = await service.download_from_url("test_url")
 
         assert result.success is False
+        assert result.error_message is not None
         assert "Parser failed" in result.error_message
 
     @pytest.mark.parametrize(
@@ -298,6 +302,7 @@ class TestDownloadService:
             result = await service.download_with_metadata(metadata_result)
 
             assert result.success is False
+            assert result.error_message is not None
             assert "Factory failed" in result.error_message
 
     @pytest.mark.parametrize(
@@ -462,7 +467,7 @@ class TestDownloadService:
                 url="test_url",
                 metadata={},
             )
-            service.url_parser.parse_url = Mock(return_value=mock_parsed_url)  # type: ignore[assignment]
+            service.url_parser.parse_url = Mock(return_value=mock_parsed_url)  # ty: ignore[invalid-assignment]
 
             result = await service.get_download_info_from_url("test_url")
 
@@ -486,7 +491,7 @@ class TestDownloadService:
         # Mock the URL parser to return invalid URL
         mock_parsed_url = Mock(spec=ParsedURL)
         mock_parsed_url.is_valid = False
-        service.url_parser.parse_url = Mock(return_value=mock_parsed_url)  # type: ignore[assignment]
+        service.url_parser.parse_url = Mock(return_value=mock_parsed_url)  # ty: ignore[invalid-assignment]
 
         with pytest.raises(ValueError, match="Invalid URL"):
             await service.get_download_info_from_url("invalid_url")
@@ -505,7 +510,9 @@ class TestDownloadService:
         )
 
         # Mock the URL parser to raise exception
-        service.url_parser.parse_url = Mock(side_effect=Exception("Parser failed"))  # type: ignore[assignment]
+        service.url_parser.parse_url = Mock(  # ty: ignore[invalid-assignment]
+            side_effect=Exception("Parser failed")
+        )
 
         with pytest.raises(Exception, match="Parser failed"):
             await service.get_download_info_from_url("test_url")
@@ -688,7 +695,7 @@ class TestDownloadService:
         # Mock the URL parser
         mock_parsed_url = Mock(spec=ParsedURL)
         mock_parsed_url.is_valid = expected_valid
-        service.url_parser.parse_url = Mock(return_value=mock_parsed_url)  # type: ignore[assignment]
+        service.url_parser.parse_url = Mock(return_value=mock_parsed_url)  # ty: ignore[invalid-assignment]
 
         if expected_valid:
             service._validate_url(url)  # Should not raise

@@ -71,9 +71,6 @@ async def test_get_download_info_track_builds_content(
     provider.client = dummy_client  # type: ignore[assignment]
     provider._authenticated = True
 
-    # No size info available; session manager get_content_info returns {}
-    provider.session_manager.get_content_info = AsyncMock(return_value={})  # type: ignore[attr-defined]
-
     content = await provider.get_download_info("123", ContentType.TRACK)
     assert content.title == "Song"
     assert content.artist == "Artist"
@@ -127,11 +124,10 @@ async def test_download_content_track_success(
         def get(self, url: str):  # type: ignore[override]
             return DummyResp(self._data)
 
-    provider.session_manager.get_session = AsyncMock(  # type: ignore[attr-defined]
-        return_value=DummySession(b"0123456789")
-    )
-    provider.session_manager.get_content_info = AsyncMock(  # type: ignore[attr-defined]
-        return_value={}
+    monkeypatch.setattr(
+        provider.session_manager,
+        "get_session",
+        AsyncMock(return_value=DummySession(b"0123456789")),
     )
 
     result = await provider.download_content(
@@ -141,7 +137,9 @@ async def test_download_content_track_success(
     assert result.success is True
     assert result.download_results
     assert result.download_results[0].success is True
-    file_path = Path(result.download_results[0].file_path)
+    file_path_str = result.download_results[0].file_path
+    assert file_path_str is not None
+    file_path = Path(file_path_str)
     assert file_path.exists()
     assert file_path.stat().st_size == 10
 
@@ -186,6 +184,5 @@ async def test_supported_content_types_validation(
 
         provider.client = Mock(get_track=Mock(return_value=DummyTrack()))  # type: ignore[assignment]
         provider._authenticated = True
-        provider.session_manager.get_content_info = AsyncMock(return_value={})  # type: ignore[attr-defined]
         content = await provider.get_download_info("7", content_type)
         assert content.content_type == ContentType.TRACK

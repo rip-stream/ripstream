@@ -376,6 +376,7 @@ class TestBaseDownloader:
             assert len(results) == 3
             for result in results:
                 assert result.is_success is True
+                assert result.file_path is not None
                 assert os.path.exists(result.file_path)
 
             await session_manager.close_all_sessions()

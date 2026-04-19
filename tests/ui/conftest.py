@@ -15,9 +15,11 @@ from PyQt6.QtWidgets import QApplication
 
 # Import qtbot from pytest-qt if available
 try:
-    from pytestqt.qtbot import QtBot
+    from pytestqt.qtbot import QtBot as _QtBot
+
+    QtBot: type | None = _QtBot
 except ImportError:
-    QtBot = None  # type: ignore[misc]  # Intentional shadowing for optional dependency
+    QtBot = None
 
 from ripstream.config.user import UserConfig
 from ripstream.core.url_parser import ParsedURL

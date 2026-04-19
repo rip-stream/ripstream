@@ -648,7 +648,7 @@ class DiscographyView(QWidget):
         self.pending_artwork.clear()
         self._consumed_artwork_ids.clear()
 
-    def set_content(self, metadata: dict[str, Any]):
+    def set_content(self, metadata: dict[str, Any] | None):
         """Set content based on metadata type."""
         if metadata is None:
             return

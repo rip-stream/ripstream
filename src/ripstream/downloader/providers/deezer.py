@@ -121,7 +121,7 @@ class DeezerDownloadProvider(BaseDownloadProvider):
             download_session = DownloadSession(self.session_manager, self.service_name)
             info = await download_session.get_content_info(preview_url)
             expected_size = info.get("size")
-        except NetworkError:
+        except (NetworkError, AttributeError, TypeError):
             # Non-fatal; proceed without size
             expected_size = None
 

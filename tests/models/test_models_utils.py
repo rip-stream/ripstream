@@ -5,6 +5,7 @@
 
 import tempfile
 from pathlib import Path
+from typing import cast
 from unittest.mock import Mock, patch
 
 import pytest
@@ -173,7 +174,7 @@ class TestGetQualityDescription:
             value: int
 
         unknown_quality = UnknownQuality(999)
-        result = get_quality_description(unknown_quality)  # type: ignore[arg-type]
+        result = get_quality_description(cast("AudioQuality", unknown_quality))
         assert result == "Unknown Quality"
 
 
@@ -502,7 +503,7 @@ class TestSearchModels:
 
     def test_search_empty_query(self, mock_track: Track, mock_album: Album) -> None:
         """Test searching with empty query returns all models."""
-        models = [mock_track, mock_album]
+        models: list[Artist | Album | Track | Playlist] = [mock_track, mock_album]
         result = search_models(models, "")
         assert result == models
 
@@ -572,7 +573,7 @@ class TestGroupTracksByAlbum:
         track3.info.track_number = 1
 
         tracks = [track1, track2, track3]
-        result = group_tracks_by_album(tracks)
+        result = group_tracks_by_album(cast("list[Track]", tracks))
 
         album_tracks = result["album1"]
         assert album_tracks[0] == track2  # Disc 1, Track 1
@@ -603,7 +604,7 @@ class TestGroupAlbumsByArtist:
         album3.info.release_year = 2021
 
         albums = [album1, album2, album3]
-        result = group_albums_by_artist(albums)
+        result = group_albums_by_artist(cast("list[Album]", albums))
 
         assert "Artist One" in result
         assert "Artist Two" in result
@@ -625,7 +626,7 @@ class TestGroupAlbumsByArtist:
         album3.info.release_year = None
 
         albums = [album1, album2, album3]
-        result = group_albums_by_artist(albums)
+        result = group_albums_by_artist(cast("list[Album]", albums))
 
         artist_albums = result["Artist One"]
         assert artist_albums[0] == album3  # None (treated as 0)

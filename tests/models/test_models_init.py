@@ -3,6 +3,7 @@
 
 """Unit tests for models/__init__.py module."""
 
+from typing import cast
 from unittest.mock import Mock, patch
 
 import pytest
@@ -102,7 +103,9 @@ class TestCreateFromSourceFunctions:
         # Create a mock source that doesn't have a specific factory
         mock_source = Mock()
 
-        with patch("ripstream.models.source_factory.get_factory_for_source") as mock_get_factory:
+        with patch(
+            "ripstream.models.source_factory.get_factory_for_source"
+        ) as mock_get_factory:
             mock_factory = Mock()
             mock_factory.create_artist = Mock(return_value=Mock(spec=Artist))
             mock_get_factory.return_value = mock_factory
@@ -115,7 +118,7 @@ class TestCreateFromSourceFunctions:
                 mock_model_create.return_value = mock_artist
 
                 result = create_artist_from_source(
-                    mock_source,  # type: ignore[invalid-argument-type]
+                    cast("StreamingSource", mock_source),
                     "test_id",
                     mock_artist_data,
                 )
@@ -151,7 +154,9 @@ class TestCreateFromSourceFunctions:
         """Test create_album_from_source falls back to ModelFactory when no specific factory."""
         mock_source = Mock()
 
-        with patch("ripstream.models.source_factory.get_factory_for_source") as mock_get_factory:
+        with patch(
+            "ripstream.models.source_factory.get_factory_for_source"
+        ) as mock_get_factory:
             mock_factory = Mock()
             mock_get_factory.return_value = mock_factory
 
@@ -164,7 +169,7 @@ class TestCreateFromSourceFunctions:
                 mock_model_create.return_value = mock_album
 
                 result = create_album_from_source(
-                    mock_source,  # type: ignore[invalid-argument-type]
+                    cast("StreamingSource", mock_source),
                     "test_id",
                     mock_album_data,
                 )
@@ -205,7 +210,9 @@ class TestCreateFromSourceFunctions:
         """Test create_track_from_source falls back to ModelFactory when no specific factory."""
         mock_source = Mock()
 
-        with patch("ripstream.models.source_factory.get_factory_for_source") as mock_get_factory:
+        with patch(
+            "ripstream.models.source_factory.get_factory_for_source"
+        ) as mock_get_factory:
             mock_factory = Mock()
             mock_get_factory.return_value = mock_factory
 
@@ -219,7 +226,7 @@ class TestCreateFromSourceFunctions:
 
                 album_data = {"title": "Test Album"}
                 result = create_track_from_source(
-                    mock_source,  # type: ignore[invalid-argument-type]
+                    cast("StreamingSource", mock_source),
                     "test_id",
                     mock_track_data,
                     album_data,
@@ -263,7 +270,9 @@ class TestCreateFromSourceFunctions:
         """Test create_playlist_from_source falls back to ModelFactory when no specific factory."""
         mock_source = Mock()
 
-        with patch("ripstream.models.source_factory.get_factory_for_source") as mock_get_factory:
+        with patch(
+            "ripstream.models.source_factory.get_factory_for_source"
+        ) as mock_get_factory:
             mock_factory = Mock()
             mock_get_factory.return_value = mock_factory
 
@@ -276,7 +285,7 @@ class TestCreateFromSourceFunctions:
                 mock_model_create.return_value = mock_playlist
 
                 result = create_playlist_from_source(
-                    mock_source,  # type: ignore[invalid-argument-type]
+                    cast("StreamingSource", mock_source),
                     "test_id",
                     mock_playlist_data,
                 )

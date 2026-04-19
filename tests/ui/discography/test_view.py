@@ -311,7 +311,7 @@ class TestDiscographyView:
         """Test handling of invalid content."""
         # Should not crash with invalid content
         discography_view.set_content({})
-        discography_view.set_content(None)  # type: ignore[invalid-argument-type] # Should handle None gracefully
+        discography_view.set_content(None)
 
     def test_artwork_cleanup_on_clear(
         self, discography_view: DiscographyView, sample_pixmap

@@ -5,6 +5,7 @@
 
 import base64
 import binascii
+from typing import cast
 
 import pytest
 
@@ -102,7 +103,8 @@ class TestEncodeSecret:
             decoded_string = decoded_bytes.decode("utf-8")
             assert decoded_string == test_value
         except (ValueError, UnicodeDecodeError, binascii.Error) as e:
-            pytest.fail(f"Failed to decode encoded value: {e}")
+            msg = f"Failed to decode encoded value: {e}"
+            raise AssertionError(msg) from e
 
 
 class TestDecodeSecret:
@@ -273,23 +275,23 @@ class TestErrorHandling:
 
     def test_encode_secret_none_input(self):
         """Test encode_secret with None input (returns empty string)."""
-        result = encode_secret(None)  # type: ignore[arg-type]
+        result = encode_secret(cast("str", None))
         assert result == ""
 
     def test_decode_secret_none_input(self):
         """Test decode_secret with None input (returns empty string)."""
-        result = decode_secret(None)  # type: ignore[arg-type]
+        result = decode_secret(cast("str", None))
         assert result == ""
 
     def test_encode_secret_non_string_input(self):
         """Test encode_secret with non-string input."""
         with pytest.raises(AttributeError):
-            encode_secret(123)  # type: ignore[arg-type]
+            encode_secret(cast("str", 123))
 
     def test_decode_secret_non_string_input(self):
         """Test decode_secret with non-string input."""
         with pytest.raises(AttributeError):
-            decode_secret(123)  # type: ignore[arg-type]
+            decode_secret(cast("str", 123))
 
     def test_decode_secret_partial_base64(self):
         """Test decoding partial base64 string."""
@@ -346,7 +348,8 @@ class TestSecurityConsiderations:
                     # Should be able to decode without error
                     base64.b64decode(encoded.encode("ascii"))
                 except (ValueError, binascii.Error) as e:
-                    pytest.fail(f"Invalid base64 output for '{value}': {e}")
+                    msg = f"Invalid base64 output for '{value}': {e}"
+                    raise AssertionError(msg) from e
 
     def test_no_information_leakage_in_length(self):
         """Test that similar inputs don't leak information through length."""

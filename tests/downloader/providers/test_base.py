@@ -4,7 +4,10 @@
 """Tests for base download provider classes."""
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from ripstream.downloader.base import DownloadResult
 from unittest.mock import Mock
 from uuid import uuid4
 
@@ -480,7 +483,10 @@ class TestBaseDownloadProvider:
         test_uuid = str(uuid4())
         result = mock_base_provider._create_download_result(
             success=True,
-            download_results=[{"download_id": test_uuid, "success": True}],
+            download_results=cast(
+                "list[DownloadResult]",
+                [{"download_id": test_uuid, "success": True}],
+            ),
             error_message=None,
             metadata={"key": "value"},
         )

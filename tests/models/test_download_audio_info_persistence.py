@@ -93,8 +93,7 @@ def test_add_download_record_persists_audio_info(
     # Verify audio info row exists and mirrors inputs
     with download_service.downloads_db.get_session() as s:
         ai = (
-            s
-            .query(DownloadAudioInfo)
+            s.query(DownloadAudioInfo)
             .filter(DownloadAudioInfo.download_id == download_id)
             .first()
         )
@@ -136,6 +135,7 @@ def test_get_download_details_formats_human_values(
         from ripstream.models.database import DownloadRecord
 
         rec = s.get(DownloadRecord, download_id)
+        assert rec is not None
         rec.file_path = file_path
         s.commit()
 
