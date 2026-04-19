@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import aiofiles
 
+from ripstream.core.aio_path import path_exists, path_mkdir
 from ripstream.downloader.base import (
     BaseDownloader,
     DownloadableContent,
@@ -788,7 +789,7 @@ class QobuzDownloader(BaseDownloader):
 
         results = []
         download_path = Path(download_directory)
-        download_path.mkdir(parents=True, exist_ok=True)
+        await path_mkdir(download_path, parents=True, exist_ok=True)
 
         # Download each available cover size
         for image in covers.images:
@@ -874,7 +875,7 @@ class QobuzDownloader(BaseDownloader):
 
         results = []
         download_path = Path(download_directory)
-        download_path.mkdir(parents=True, exist_ok=True)
+        await path_mkdir(download_path, parents=True, exist_ok=True)
 
         for booklet in booklets:
             try:
@@ -1067,7 +1068,7 @@ class QobuzDownloader(BaseDownloader):
         if content.content_type != ContentType.TRACK:
             return
 
-        if not Path(file_path).exists():
+        if not await path_exists(file_path):
             logger.warning(
                 "Downloaded file not found for post-processing: %s", file_path
             )
@@ -1268,7 +1269,7 @@ class QobuzDownloader(BaseDownloader):
             )
 
             # Verify the artwork file was actually downloaded
-            if embed_cover_path and Path(embed_cover_path).exists():
+            if embed_cover_path and await path_exists(embed_cover_path):
                 logger.debug("Successfully downloaded artwork to: %s", embed_cover_path)
                 return embed_cover_path
             logger.warning(

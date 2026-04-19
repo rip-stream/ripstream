@@ -93,7 +93,8 @@ def test_add_download_record_persists_audio_info(
     # Verify audio info row exists and mirrors inputs
     with download_service.downloads_db.get_session() as s:
         ai = (
-            s.query(DownloadAudioInfo)
+            s
+            .query(DownloadAudioInfo)
             .filter(DownloadAudioInfo.download_id == download_id)
             .first()
         )

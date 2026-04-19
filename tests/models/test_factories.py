@@ -499,7 +499,9 @@ class TestSoundCloudModelFactory:
 
             call_args = mock_create.call_args
             transformed_data = call_args[0][2]
-            assert transformed_data["duration"] == 180.0  # Converted from 180000ms
+            assert transformed_data["duration"] == pytest.approx(
+                180.0
+            )  # Converted from 180000ms
             assert transformed_data["genres"] == ["Hip Hop"]
             assert transformed_data["is_explicit"] is True
 

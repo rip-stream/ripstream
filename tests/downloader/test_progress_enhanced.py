@@ -38,9 +38,9 @@ class TestDownloadProgress:
         assert progress.state == DownloadState.DOWNLOADING
         assert isinstance(progress.start_time, datetime)
         assert isinstance(progress.last_update_time, datetime)
-        assert progress.bytes_per_second == 0.0
-        assert progress.average_speed == 0.0
-        assert progress.percentage == 0.0
+        assert progress.bytes_per_second == pytest.approx(0.0)
+        assert progress.average_speed == pytest.approx(0.0)
+        assert progress.percentage == pytest.approx(0.0)
         assert progress.eta_seconds is None
         assert progress.error_count == 0
         assert progress.last_error is None
@@ -73,7 +73,7 @@ class TestDownloadProgress:
         progress.update_progress(512)
 
         assert progress.downloaded_bytes == 512
-        assert progress.percentage == 50.0
+        assert progress.percentage == pytest.approx(50.0)
         assert progress.bytes_per_second > 0
         assert progress.average_speed > 0
 
@@ -83,7 +83,7 @@ class TestDownloadProgress:
         progress.update_progress(256)  # Simulate restart
 
         assert progress.downloaded_bytes == 256
-        assert progress.percentage == 25.0
+        assert progress.percentage == pytest.approx(25.0)
 
     def test_update_progress_zero_time_diff(self, progress):
         """Test updating progress with zero time difference."""
@@ -93,7 +93,7 @@ class TestDownloadProgress:
             progress.update_progress(512)
 
             assert progress.downloaded_bytes == 512
-            assert progress.bytes_per_second == 0.0
+            assert progress.bytes_per_second == pytest.approx(0.0)
 
     def test_set_total_size(self, progress):
         """Test setting total size."""
@@ -101,7 +101,7 @@ class TestDownloadProgress:
         progress.set_total_size(2048)
 
         assert progress.total_bytes == 2048
-        assert progress.percentage == 25.0
+        assert progress.percentage == pytest.approx(25.0)
 
     def test_set_total_size_with_existing_progress(self, progress):
         """Test setting total size when download already has progress."""
@@ -109,7 +109,7 @@ class TestDownloadProgress:
         progress.total_bytes = 1024
         progress.set_total_size(2048)
 
-        assert progress.percentage == 25.0
+        assert progress.percentage == pytest.approx(25.0)
 
     def test_mark_error(self, progress):
         """Test marking an error."""
@@ -125,7 +125,7 @@ class TestDownloadProgress:
         progress.mark_completed()
 
         assert progress.state == DownloadState.COMPLETED
-        assert progress.percentage == 100.0
+        assert progress.percentage == pytest.approx(100.0)
         assert progress.downloaded_bytes == progress.total_bytes
 
     def test_mark_completed_no_total_size(self, progress):
@@ -134,7 +134,7 @@ class TestDownloadProgress:
         progress.mark_completed()
 
         assert progress.state == DownloadState.COMPLETED
-        assert progress.percentage == 100.0
+        assert progress.percentage == pytest.approx(100.0)
 
     @pytest.mark.parametrize(
         ("speed", "expected"),
@@ -209,7 +209,7 @@ class TestDownloadProgress:
 
         progress.update_progress(512)
         assert progress.downloaded_bytes == 512
-        assert progress.percentage == 0.0  # No total size, so 0%
+        assert progress.percentage == pytest.approx(0.0)  # No total size, so 0%
         assert progress.eta_seconds is None
 
     def test_progress_eta_calculation(self, progress):
@@ -224,13 +224,13 @@ class TestDownloadProgress:
         """Test that percentage is capped at 100%."""
         progress.update_progress(2048)  # More than total_bytes (1024)
 
-        assert progress.percentage == 100.0
+        assert progress.percentage == pytest.approx(100.0)
 
     def test_progress_negative_percentage(self, progress):
         """Test handling negative percentage."""
         progress.update_progress(-100)
 
-        assert progress.percentage == 0.0
+        assert progress.percentage == pytest.approx(0.0)
 
 
 class TestProgressTracker:
@@ -295,7 +295,7 @@ class TestProgressTracker:
 
         progress = tracker._progress[download_id]
         assert progress.downloaded_bytes == 512
-        assert progress.percentage == 50.0
+        assert progress.percentage == pytest.approx(50.0)
 
     def test_update_progress_nonexistent(self, tracker, download_id):
         """Test updating progress for non-existent download."""
@@ -322,7 +322,7 @@ class TestProgressTracker:
 
         progress = tracker._progress[download_id]
         assert progress.state == DownloadState.COMPLETED
-        assert progress.percentage == 100.0
+        assert progress.percentage == pytest.approx(100.0)
 
     def test_mark_completed_nonexistent(self, tracker, download_id):
         """Test marking non-existent download as completed."""
@@ -500,13 +500,13 @@ class TestProgressIntegration:
         # Start tracking
         progress = tracker.start_tracking(download_id, total_bytes=1024)
         assert progress.state == DownloadState.DOWNLOADING
-        assert progress.percentage == 0.0
+        assert progress.percentage == pytest.approx(0.0)
 
         # Update progress
         tracker.update_progress(download_id, 512)
         progress = tracker.get_progress(download_id)
         assert progress is not None
-        assert progress.percentage == 50.0
+        assert progress.percentage == pytest.approx(50.0)
         assert progress.downloaded_bytes == 512
 
         # Complete download
@@ -514,7 +514,7 @@ class TestProgressIntegration:
         progress = tracker.get_progress(download_id)
         assert progress is not None
         assert progress.state == DownloadState.COMPLETED
-        assert progress.percentage == 100.0
+        assert progress.percentage == pytest.approx(100.0)
 
         # Clear completed
         tracker.clear_completed()
@@ -562,8 +562,8 @@ class TestProgressIntegration:
 
         assert progress1 is not None
         assert progress2 is not None
-        assert progress1.percentage == 50.0
-        assert progress2.percentage == 50.0
+        assert progress1.percentage == pytest.approx(50.0)
+        assert progress2.percentage == pytest.approx(50.0)
 
         # Complete one
         tracker.mark_completed(download_id1)

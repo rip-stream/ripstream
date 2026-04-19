@@ -18,6 +18,12 @@ from uuid import UUID, uuid4
 import aiofiles
 from pydantic import Field
 
+from ripstream.core.aio_path import (
+    path_exists,
+    path_mkdir,
+    path_size,
+    path_unlink,
+)
 from ripstream.downloader.config import DownloadBehaviorSettings, DownloaderConfig
 from ripstream.downloader.enums import ContentType
 from ripstream.downloader.exceptions import (
@@ -224,7 +230,7 @@ class BaseDownloader(ABC):
         download_directory = download_directory or str(self.config.download_directory)
 
         # Prepare download environment
-        Path(download_directory).mkdir(parents=True, exist_ok=True)
+        await path_mkdir(download_directory, parents=True, exist_ok=True)
         await self._check_available_space(download_directory, content.expected_size)
 
         file_path = str(Path(download_directory) / content.get_safe_filename())
@@ -313,7 +319,7 @@ class BaseDownloader(ABC):
         """Create result for successful download."""
         end_time = datetime.now(UTC)
         duration = (end_time - start_time).total_seconds()
-        file_size = Path(file_path).stat().st_size
+        file_size = await path_size(file_path)
         average_speed = file_size / duration if duration > 0 else 0
 
         return DownloadResult(
@@ -350,9 +356,9 @@ class BaseDownloader(ABC):
         self.progress_tracker.mark_error(download_id, error_message)
 
         # Clean up partial file
-        if Path(file_path).exists():
+        if await path_exists(file_path):
             with contextlib.suppress(OSError):
-                Path(file_path).unlink()
+                await path_unlink(file_path)
 
         return DownloadResult(
             download_id=download_id,
@@ -428,9 +434,9 @@ class BaseDownloader(ABC):
                     await asyncio.sleep(delay)
 
                     # Clean up partial file
-                    if Path(file_path).exists():
+                    if await path_exists(file_path):
                         with contextlib.suppress(OSError):
-                            Path(file_path).unlink()
+                            await path_unlink(file_path)
             else:
                 return  # Success
 
@@ -491,11 +497,11 @@ class BaseDownloader(ABC):
         settings: DownloadBehaviorSettings,
     ) -> None:
         """Validate downloaded file."""
-        if not Path(file_path).exists():
+        if not await path_exists(file_path):
             msg = "Downloaded file does not exist"
             raise InvalidContentError(msg)
 
-        file_size = Path(file_path).stat().st_size
+        file_size = await path_size(file_path)
 
         # Validate file size
         if (
@@ -528,7 +534,7 @@ class BaseDownloader(ABC):
 
     async def _calculate_checksum(self, file_path: str, algorithm: str = "md5") -> str:
         """Calculate file checksum."""
-        if not Path(file_path).exists():
+        if not await path_exists(file_path):
             return ""
 
         hasher = hashlib.new(algorithm.lower())

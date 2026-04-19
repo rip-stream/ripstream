@@ -5,7 +5,7 @@
 
 import logging
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -22,7 +22,7 @@ class ProgressCallback(Protocol):
         self,
         download_id: UUID,
         progress: "DownloadProgress",
-        **kwargs: object,
+        **kwargs: Any,
     ) -> None:
         """Update progress callback."""
         ...

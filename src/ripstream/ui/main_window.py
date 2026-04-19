@@ -148,7 +148,7 @@ class MainWindow(QMainWindow):
 
     def _setup_main_panel_views(self):
         """Configure the main panel with the appropriate view components."""
-        main_panel = self.ui_manager.main_panel
+        main_panel = self.ui_manager.get_main_panel()
         discography_view = self.ui_manager.get_discography_view()
         downloads_view = self.ui_manager.get_downloads_view()
 
@@ -158,9 +158,15 @@ class MainWindow(QMainWindow):
     def setup_menus(self):
         """Set up the menu bar."""
         menubar = self.menuBar()
+        if menubar is None:
+            msg = "Main window has no menu bar"
+            raise RuntimeError(msg)
 
         # File menu
         file_menu = menubar.addMenu("&File")
+        if file_menu is None:
+            msg = "Failed to create File menu"
+            raise RuntimeError(msg)
 
         exit_action = QAction("E&xit", self)
         exit_action.setShortcut(QKeySequence.StandardKey.Quit)
@@ -170,6 +176,9 @@ class MainWindow(QMainWindow):
 
         # Edit menu
         edit_menu = menubar.addMenu("&Edit")
+        if edit_menu is None:
+            msg = "Failed to create Edit menu"
+            raise RuntimeError(msg)
 
         preferences_action = QAction("&Preferences...", self)
         preferences_action.setShortcut(QKeySequence.StandardKey.Preferences)
@@ -180,6 +189,9 @@ class MainWindow(QMainWindow):
 
         # Help menu
         help_menu = menubar.addMenu("&Help")
+        if help_menu is None:
+            msg = "Failed to create Help menu"
+            raise RuntimeError(msg)
 
         about_action = QAction("&About", self)
         about_action.setStatusTip("About Ripstream")
@@ -226,7 +238,7 @@ class MainWindow(QMainWindow):
             "Licensed under the MIT license.",
         )
 
-    def closeEvent(self, a0: QCloseEvent):  # noqa: N802
+    def closeEvent(self, a0: QCloseEvent | None) -> None:  # noqa: N802
         """Handle window close event."""
         # Clean up metadata service and any running fetchers
         if hasattr(self, "metadata_service"):
@@ -250,10 +262,11 @@ class MainWindow(QMainWindow):
         # Persist working session snapshot
         try:
             self._save_working_session()
-        except Exception:
+        except (RuntimeError, OSError, ValueError):
             logger.exception("Failed to save session snapshot")
 
-        a0.accept()
+        if a0 is not None:
+            a0.accept()
 
     def handle_url_submission(self, url: str, _detected_service: str):
         """Handle URL submission from the navigation bar."""
@@ -437,7 +450,7 @@ class MainWindow(QMainWindow):
         """Handle metadata fetched from streaming service."""
         try:
             # Use the new set_content method to handle different content types properly
-            self.ui_manager.main_panel.discography_view.set_content(metadata)
+            self.ui_manager.get_discography_view().set_content(metadata)
 
             # Update status message
             items = metadata.get("items", [])
@@ -831,9 +844,9 @@ class MainWindow(QMainWindow):
         downloads_scroll = None
         downloads_view = self.ui_manager.get_downloads_view()
         if downloads_view and hasattr(downloads_view, "downloads_table"):
-            downloads_scroll = (
-                downloads_view.downloads_table.verticalScrollBar().value()
-            )
+            scrollbar = downloads_view.downloads_table.verticalScrollBar()
+            if scrollbar is not None:
+                downloads_scroll = scrollbar.value()
 
         payload = {
             "last_url": last_url,
@@ -911,7 +924,9 @@ class MainWindow(QMainWindow):
             return
         scroll_val = state.get("downloads_scroll")
         if isinstance(scroll_val, int):
-            downloads_view.downloads_table.verticalScrollBar().setValue(scroll_val)
+            scrollbar = downloads_view.downloads_table.verticalScrollBar()
+            if scrollbar is not None:
+                scrollbar.setValue(scroll_val)
 
 
 @dataclass

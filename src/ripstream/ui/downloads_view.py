@@ -182,6 +182,9 @@ class DownloadsTableWidget(QTableWidget):
 
         # Configure column widths
         header = self.horizontalHeader()
+        if header is None:
+            msg = "QTableWidget has no horizontal header"
+            raise RuntimeError(msg)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Title
         header.setSectionResizeMode(
             1, QHeaderView.ResizeMode.ResizeToContents
@@ -207,7 +210,10 @@ class DownloadsTableWidget(QTableWidget):
 
     def _show_context_menu(self, pos) -> None:
         # Determine the row at the click position
-        global_pos = self.viewport().mapToGlobal(pos)
+        viewport = self.viewport()
+        if viewport is None:
+            return
+        global_pos = viewport.mapToGlobal(pos)
         row = self.rowAt(pos.y())
         if row < 0:
             return
@@ -385,9 +391,9 @@ class DownloadsTableWidget(QTableWidget):
         """Clear all download items from the table."""
         self.setRowCount(0)
 
-    def get_download_stats(self) -> dict[str, int]:
+    def get_download_stats(self) -> dict[str, Any]:
         """Get current download statistics."""
-        stats = {
+        stats: dict[str, Any] = {
             "total": self.rowCount(),
             "completed": 0,
             "failed": 0,
@@ -698,10 +704,10 @@ class DownloadsHistoryView(QWidget):
 
     @staticmethod
     def _extract_flac_cover_bytes(file_path: str) -> bytes | None:
-        from mutagen import MutagenError  # type: ignore
+        from mutagen import MutagenError
 
         try:
-            from mutagen.flac import FLAC  # type: ignore
+            from mutagen.flac import FLAC
 
             fl = FLAC(file_path)
             if getattr(fl, "pictures", None):
@@ -712,10 +718,10 @@ class DownloadsHistoryView(QWidget):
 
     @staticmethod
     def _extract_mp3_cover_bytes(file_path: str) -> bytes | None:
-        from mutagen import MutagenError  # type: ignore
+        from mutagen import MutagenError
 
         try:
-            from mutagen.id3 import ID3  # type: ignore
+            from mutagen.id3 import ID3
 
             id3 = ID3(file_path)
             apics = id3.getall("APIC")
@@ -727,10 +733,10 @@ class DownloadsHistoryView(QWidget):
 
     @staticmethod
     def _extract_mp4_cover_bytes(file_path: str) -> bytes | None:
-        from mutagen import MutagenError  # type: ignore
+        from mutagen import MutagenError
 
         try:
-            from mutagen.mp4 import MP4  # type: ignore
+            from mutagen.mp4 import MP4
 
             mp4 = MP4(file_path)
             covr = (mp4.tags or {}).get("covr")
@@ -767,24 +773,29 @@ class DownloadsHistoryView(QWidget):
     def add_download(self, download_data: dict[str, Any]):
         """Add a new download to the history."""
         try:
-            # Convert string values to enums if needed
-            media_type = download_data.get("media_type")
-            if isinstance(media_type, str):
-                from ripstream.models.enums import MediaType
+            from ripstream.models.enums import MediaType, StreamingSource
 
+            raw_media_type = download_data.get("media_type")
+            if isinstance(raw_media_type, MediaType):
+                media_type: MediaType = raw_media_type
+            elif isinstance(raw_media_type, str):
                 try:
-                    media_type = MediaType(media_type.lower())
+                    media_type = MediaType(raw_media_type.lower())
                 except ValueError:
                     media_type = MediaType.TRACK
+            else:
+                media_type = MediaType.TRACK
 
-            source = download_data.get("source")
-            if isinstance(source, str):
-                from ripstream.models.enums import StreamingSource
-
+            raw_source = download_data.get("source")
+            if isinstance(raw_source, StreamingSource):
+                source: StreamingSource = raw_source
+            elif isinstance(raw_source, str):
                 try:
-                    source = StreamingSource(source.lower())
+                    source = StreamingSource(raw_source.lower())
                 except ValueError:
                     source = StreamingSource.QOBUZ
+            else:
+                source = StreamingSource.QOBUZ
 
             # Add to database first
             original_id = download_data.get("download_id")
@@ -831,12 +842,12 @@ class DownloadsHistoryView(QWidget):
         speed_bps: float | None = None,
     ):
         """Update download progress."""
+        if status is None:
+            # If no status provided, use DOWNLOADING as default
+            status = DownloadStatus.DOWNLOADING
         try:
             # Normalize caller-provided ID to internal DB ID if necessary
             download_id = self._id_aliases.get(download_id, download_id)
-            if status is None:
-                # If no status provided, use DOWNLOADING as default
-                status = DownloadStatus.DOWNLOADING
 
             if speed_bps is not None:
                 self._speeds_bps[download_id] = max(0.0, float(speed_bps))

@@ -671,7 +671,7 @@ class TestDownloadSession:
         """Test extracting valid retry-after header."""
         headers = {"retry-after": "60"}
         retry_after = download_session._extract_retry_after(headers)
-        assert retry_after == 60.0
+        assert retry_after == pytest.approx(60.0)
 
     def test_extract_retry_after_invalid_value(self, download_session):
         """Test extracting invalid retry-after header."""

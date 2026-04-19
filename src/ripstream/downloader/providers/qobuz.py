@@ -71,11 +71,23 @@ class QobuzDownloadProvider(BaseDownloadProvider):
             return self._authenticated
         return False
 
-    def _validate_downloader(self) -> None:
-        """Validate downloader is initialized and raise RuntimeError if not."""
+    def _validate_downloader(self) -> "QobuzDownloader":
+        """Validate downloader is initialized and return it.
+
+        Returns
+        -------
+        QobuzDownloader
+            The initialized downloader instance.
+
+        Raises
+        ------
+        RuntimeError
+            If the downloader has not been initialized.
+        """
         if not self._downloader:
             msg = "Downloader not initialized"
             raise RuntimeError(msg)
+        return self._downloader
 
     def _validate_content_type(self, content_type: ContentType) -> None:
         """Validate content type and raise ValueError if unsupported."""
@@ -98,9 +110,9 @@ class QobuzDownloadProvider(BaseDownloadProvider):
         if not self._authenticated:
             await self.authenticate()
 
-        self._validate_downloader()
+        downloader = self._validate_downloader()
 
-        return await self._downloader.get_download_info(content_id)
+        return await downloader.get_download_info(content_id)
 
     async def download_content(
         self,
@@ -114,26 +126,26 @@ class QobuzDownloadProvider(BaseDownloadProvider):
             if not self._authenticated:
                 await self.authenticate()
 
-            self._validate_downloader()
+            downloader = self._validate_downloader()
             self._validate_content_type(content_type)
 
             # Use the existing QobuzDownloader methods based on content type
             if content_type == ContentType.TRACK:
                 # For a single track, rely on downloader to compute album folder and prefetch as needed
-                result = await self._downloader.download_track_with_album_folder(
+                result = await downloader.download_track_with_album_folder(
                     content_id, download_directory
                 )
                 results = [result]
             elif content_type == ContentType.ALBUM:
-                results = await self._downloader.download_album(
+                results = await downloader.download_album(
                     content_id, download_directory
                 )
             elif content_type == ContentType.PLAYLIST:
-                results = await self._downloader.download_playlist(
+                results = await downloader.download_playlist(
                     content_id, download_directory
                 )
             elif content_type == ContentType.ARTIST:
-                results = await self._downloader.download_artist_discography(
+                results = await downloader.download_artist_discography(
                     content_id, download_directory
                 )
 
@@ -171,9 +183,9 @@ class QobuzDownloadProvider(BaseDownloadProvider):
             if not self._authenticated:
                 await self.authenticate()
 
-            self._validate_downloader()
+            downloader = self._validate_downloader()
 
-            results = await self._downloader.download_artist_discography(
+            results = await downloader.download_artist_discography(
                 artist_id, download_directory
             )
 

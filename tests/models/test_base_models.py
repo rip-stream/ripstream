@@ -251,7 +251,7 @@ class TestSearchableMedia:
 
         assert searchable_media.search_query == "updated query"
         assert searchable_media.search_rank == 2
-        assert searchable_media.relevance_score == 0.8
+        assert searchable_media.relevance_score == pytest.approx(0.8)
 
 
 class TestMetadataContainer:
@@ -351,7 +351,7 @@ class TestMetadataContainer:
         metadata_container.add_raw_metadata("zero_float", 0.0)
 
         assert metadata_container.get_metadata("zero_int") == 0
-        assert metadata_container.get_metadata("zero_float") == 0.0
+        assert metadata_container.get_metadata("zero_float") == pytest.approx(0.0)
 
 
 class TestMetadataValue:
@@ -427,7 +427,7 @@ class TestModelIntegration:
         media.set_search_info("test query", 1, 0.8)
         assert media.search_query == "test query"
         assert media.search_rank == 1
-        assert media.relevance_score == 0.8
+        assert media.relevance_score == pytest.approx(0.8)
 
     def test_metadata_container_with_other_classes(self):
         """Test combining MetadataContainer with other classes."""

@@ -17,12 +17,12 @@ class FactoryProtocol(Protocol):
     """Protocol defining the interface for factory classes."""
 
     @staticmethod
-    def create_artist(artist_id: str, data: dict[str, Any], **kwargs: object) -> Artist:
+    def create_artist(artist_id: str, data: dict[str, Any], **kwargs: Any) -> Artist:
         """Create an Artist model from source data."""
         ...
 
     @staticmethod
-    def create_album(album_id: str, data: dict[str, Any], **kwargs: object) -> Album:
+    def create_album(album_id: str, data: dict[str, Any], **kwargs: Any) -> Album:
         """Create an Album model from source data."""
         ...
 
@@ -31,14 +31,14 @@ class FactoryProtocol(Protocol):
         track_id: str,
         data: dict[str, Any],
         album_data: dict[str, Any] | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> Track:
         """Create a Track model from source data."""
         ...
 
     @staticmethod
     def create_playlist(
-        playlist_id: str, data: dict[str, Any], **kwargs: object
+        playlist_id: str, data: dict[str, Any], **kwargs: Any
     ) -> Playlist:
         """Create a Playlist model from source data."""
         ...
@@ -49,14 +49,14 @@ class ModelFactory:
 
     @staticmethod
     def create_artist(
-        source: StreamingSource, artist_id: str, data: dict[str, Any], **kwargs: object
+        source: StreamingSource, artist_id: str, data: dict[str, Any], **kwargs: Any
     ) -> Artist:
         """Create an Artist model from source data."""
         return Artist.from_source_data(source, artist_id, data, **kwargs)
 
     @staticmethod
     def create_album(
-        source: StreamingSource, album_id: str, data: dict[str, Any], **kwargs: object
+        source: StreamingSource, album_id: str, data: dict[str, Any], **kwargs: Any
     ) -> Album:
         """Create an Album model from source data."""
         return Album.from_source_data(source, album_id, data, **kwargs)
@@ -67,7 +67,7 @@ class ModelFactory:
         track_id: str,
         data: dict[str, Any],
         album_data: dict[str, Any] | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> Track:
         """Create a Track model from source data."""
         return Track.from_source_data(source, track_id, data, album_data, **kwargs)
@@ -77,7 +77,7 @@ class ModelFactory:
         source: StreamingSource,
         playlist_id: str,
         data: dict[str, Any],
-        **kwargs: object,
+        **kwargs: Any,
     ) -> Playlist:
         """Create a Playlist model from source data."""
         return Playlist.from_source_data(source, playlist_id, data, **kwargs)
@@ -87,7 +87,7 @@ class QobuzModelFactory:
     """Factory for creating models from Qobuz API data."""
 
     @staticmethod
-    def create_artist(artist_id: str, data: dict[str, Any], **kwargs: object) -> Artist:
+    def create_artist(artist_id: str, data: dict[str, Any], **kwargs: Any) -> Artist:
         """Create an Artist from Qobuz data."""
         # Transform Qobuz-specific data structure
         transformed_data = {
@@ -123,7 +123,7 @@ class QobuzModelFactory:
         )
 
     @staticmethod
-    def create_album(album_id: str, data: dict[str, Any], **kwargs: object) -> Album:
+    def create_album(album_id: str, data: dict[str, Any], **kwargs: Any) -> Album:
         """Create an Album from Qobuz data."""
         release_date = data.get("release_date_original", "")
         release_year = None
@@ -163,7 +163,7 @@ class QobuzModelFactory:
         track_id: str,
         data: dict[str, Any],
         album_data: dict[str, Any] | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> Track:
         """Create a Track from Qobuz data."""
         transformed_data = {
@@ -191,7 +191,7 @@ class QobuzModelFactory:
 
     @staticmethod
     def create_playlist(
-        playlist_id: str, data: dict[str, Any], **kwargs: object
+        playlist_id: str, data: dict[str, Any], **kwargs: Any
     ) -> Playlist:
         """Create a Playlist from Qobuz data."""
         transformed_data = {
@@ -211,7 +211,7 @@ class TidalModelFactory:
     """Factory for creating models from Tidal API data."""
 
     @staticmethod
-    def create_artist(artist_id: str, data: dict[str, Any], **kwargs: object) -> Artist:
+    def create_artist(artist_id: str, data: dict[str, Any], **kwargs: Any) -> Artist:
         """Create an Artist from Tidal data."""
         transformed_data = {
             "name": data.get("name", "Unknown Artist"),
@@ -226,7 +226,7 @@ class TidalModelFactory:
         )
 
     @staticmethod
-    def create_album(album_id: str, data: dict[str, Any], **kwargs: object) -> Album:
+    def create_album(album_id: str, data: dict[str, Any], **kwargs: Any) -> Album:
         """Create an Album from Tidal data."""
         transformed_data = {
             "title": data.get("title", "Unknown Album"),
@@ -249,7 +249,7 @@ class TidalModelFactory:
         track_id: str,
         data: dict[str, Any],
         album_data: dict[str, Any] | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> Track:
         """Create a Track from Tidal data."""
         # Map Tidal quality to our enum
@@ -290,7 +290,7 @@ class TidalModelFactory:
 
     @staticmethod
     def create_playlist(
-        playlist_id: str, data: dict[str, Any], **kwargs: object
+        playlist_id: str, data: dict[str, Any], **kwargs: Any
     ) -> Playlist:
         """Create a Playlist from Tidal data."""
         transformed_data = {
@@ -310,7 +310,7 @@ class DeezerModelFactory:
     """Factory for creating models from Deezer API data."""
 
     @staticmethod
-    def create_artist(artist_id: str, data: dict[str, Any], **kwargs: object) -> Artist:
+    def create_artist(artist_id: str, data: dict[str, Any], **kwargs: Any) -> Artist:
         """Create an Artist from Deezer data."""
         transformed_data = {
             "name": data.get("name", "Unknown Artist"),
@@ -325,7 +325,7 @@ class DeezerModelFactory:
         )
 
     @staticmethod
-    def create_album(album_id: str, data: dict[str, Any], **kwargs: object) -> Album:
+    def create_album(album_id: str, data: dict[str, Any], **kwargs: Any) -> Album:
         """Create an Album from Deezer data."""
         genres_data = data.get("genres", {})
         genres = []
@@ -357,7 +357,7 @@ class DeezerModelFactory:
         track_id: str,
         data: dict[str, Any],
         album_data: dict[str, Any] | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> Track:
         """Create a Track from Deezer data."""
         transformed_data = {
@@ -380,7 +380,7 @@ class DeezerModelFactory:
 
     @staticmethod
     def create_playlist(
-        playlist_id: str, data: dict[str, Any], **kwargs: object
+        playlist_id: str, data: dict[str, Any], **kwargs: Any
     ) -> Playlist:
         """Create a Playlist from Deezer data."""
         transformed_data = {
@@ -400,7 +400,7 @@ class SoundCloudModelFactory:
     """Factory for creating models from SoundCloud API data."""
 
     @staticmethod
-    def create_artist(artist_id: str, data: dict[str, Any], **kwargs: object) -> Artist:
+    def create_artist(artist_id: str, data: dict[str, Any], **kwargs: Any) -> Artist:
         """Create an Artist from SoundCloud data."""
         transformed_data = {
             "name": data.get("username", "Unknown Artist"),
@@ -421,7 +421,7 @@ class SoundCloudModelFactory:
         track_id: str,
         data: dict[str, Any],
         album_data: dict[str, Any] | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> Track:
         """Create a Track from SoundCloud data."""
         duration_ms = data.get("duration", 0)
@@ -459,7 +459,7 @@ class SoundCloudModelFactory:
 
     @staticmethod
     def create_playlist(
-        playlist_id: str, data: dict[str, Any], **kwargs: object
+        playlist_id: str, data: dict[str, Any], **kwargs: Any
     ) -> Playlist:
         """Create a Playlist from SoundCloud data."""
         transformed_data = {

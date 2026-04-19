@@ -3,6 +3,7 @@
 
 """Artwork and cover image models."""
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,11 @@ class CoverImage(RipStreamBaseModel):
     @property
     def is_square(self) -> bool:
         """Check if the image is square."""
-        return self.aspect_ratio == 1.0 if self.aspect_ratio is not None else False
+        return (
+            math.isclose(self.aspect_ratio, 1.0)
+            if self.aspect_ratio is not None
+            else False
+        )
 
     @property
     def file_size_kb(self) -> float | None:

@@ -233,10 +233,10 @@ class TestAlbumStats:
     def test_album_stats_creation(self, album_stats):
         """Test creating an AlbumStats instance."""
         assert album_stats.total_plays == 1000
-        assert album_stats.popularity_score == 85.5
-        assert album_stats.rating == 4.2
+        assert album_stats.popularity_score == pytest.approx(85.5)
+        assert album_stats.rating == pytest.approx(4.2)
         assert album_stats.review_count == 50
-        assert album_stats.average_rating == 4.1
+        assert album_stats.average_rating == pytest.approx(4.1)
 
     def test_album_stats_defaults(self):
         """Test default values for AlbumStats."""
@@ -363,8 +363,8 @@ class TestAlbum:
         assert album.info.title == "Test Album"
         assert album.credits.artist == "Test Artist"
         assert album.credits.album_artist == "Various Artists"
-        assert album.stats.popularity_score == 85.5
-        assert album.stats.rating == 4.2
+        assert album.stats.popularity_score == pytest.approx(85.5)
+        assert album.stats.rating == pytest.approx(4.2)
         assert album.is_various_artists is True
 
     def test_album_properties(self, album):

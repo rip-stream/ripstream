@@ -21,7 +21,7 @@ import json
 import logging
 import re
 
-from PyQt6.QtCore import QObject, QUrl, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QUrl, pyqtSignal, pyqtSlot
 from PyQt6.QtWebEngineCore import (
     QWebEnginePage,
     QWebEngineProfile,
@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QLabel,
     QVBoxLayout,
+    QWidget,
 )
 
 logger = logging.getLogger(__name__)
@@ -124,16 +125,16 @@ class _TokenCapturePage(QWebEnginePage):
     def javaScriptConsoleMessage(  # noqa: N802 (Qt signature)
         self,
         level: QWebEnginePage.JavaScriptConsoleMessageLevel,
-        message: str,
-        line_number: int,
-        source_id: str,
+        message: str | None,
+        lineNumber: int,  # noqa: N803 (Qt signature)
+        sourceID: str | None,  # noqa: N803 (Qt signature)
     ) -> None:
         """Forward marker-prefixed messages to listeners."""
-        if message.startswith(_INTERCEPT_MARKER):
+        if message and message.startswith(_INTERCEPT_MARKER):
             payload = message[len(_INTERCEPT_MARKER) :]
             self.token_payload_received.emit(payload)
             return
-        super().javaScriptConsoleMessage(level, message, line_number, source_id)
+        super().javaScriptConsoleMessage(level, message, lineNumber, sourceID)
 
 
 class QobuzLoginDialog(QDialog):
@@ -141,7 +142,7 @@ class QobuzLoginDialog(QDialog):
 
     Parameters
     ----------
-    parent : QObject | None
+    parent : QWidget | None
         Parent widget passed through to :class:`QDialog`.
 
     Notes
@@ -154,8 +155,8 @@ class QobuzLoginDialog(QDialog):
 
     captured = pyqtSignal(str, str)
 
-    def __init__(self, parent: QObject | None = None) -> None:
-        super().__init__(parent)  # type: ignore[arg-type]
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
         self.setWindowTitle("Sign in to Qobuz")
         self.resize(900, 700)
         self.captured_user_id: str | None = None

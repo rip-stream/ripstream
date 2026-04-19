@@ -176,7 +176,7 @@ async def example_provider_factory():
 async def main():
     """Run all examples."""
     # Create downloads directory
-    Path("./downloads").mkdir(exist_ok=True)
+    await asyncio.to_thread(Path("./downloads").mkdir, exist_ok=True)
 
     # Run examples
     example_url_parsing()

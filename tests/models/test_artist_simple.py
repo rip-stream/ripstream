@@ -126,7 +126,7 @@ class TestArtistStats:
         assert stats.total_plays == 1000000
         assert stats.monthly_listeners == 50000
         assert stats.followers == 25000
-        assert stats.popularity_score == 85.5
+        assert stats.popularity_score == pytest.approx(85.5)
 
     def test_artist_stats_defaults(self):
         """Test ArtistStats creation with default values."""

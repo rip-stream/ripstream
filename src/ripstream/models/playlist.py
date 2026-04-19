@@ -175,7 +175,7 @@ class Playlist(DownloadableMedia, SearchableMedia):
         source: StreamingSource,
         playlist_id: str,
         data: dict[str, Any],
-        **kwargs: object,
+        **kwargs: Any,
     ) -> "Playlist":
         """Create a Playlist from streaming source data."""
         # Extract basic info
@@ -259,7 +259,7 @@ class Playlist(DownloadableMedia, SearchableMedia):
         track_id: str,
         position: int | None = None,
         added_by: str | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> PlaylistTrack:
         """Add a track to the playlist."""
         if position is None:
@@ -386,7 +386,7 @@ class Playlist(DownloadableMedia, SearchableMedia):
     def matches_search(self, query: str) -> bool:
         """Check if the playlist matches a search query."""
         query_lower = query.lower()
-        return (
+        return bool(
             query_lower in self.info.name.lower()
             or (self.info.description and query_lower in self.info.description.lower())
             or (self.info.owner and query_lower in self.info.owner.lower())

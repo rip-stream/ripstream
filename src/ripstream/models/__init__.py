@@ -61,6 +61,12 @@ from ripstream.models.playlist import (
     PlaylistStats,
     PlaylistTrack,
 )
+from ripstream.models.source_factory import (
+    create_album_from_source,
+    create_artist_from_source,
+    create_playlist_from_source,
+    create_track_from_source,
+)
 from ripstream.models.track import Track, TrackCredits, TrackInfo
 from ripstream.models.utils import (
     calculate_album_stats,
@@ -125,7 +131,11 @@ __all__ = [
     "calculate_album_stats",
     "calculate_playlist_stats",
     "close_databases",
+    "create_album_from_source",
+    "create_artist_from_source",
     "create_download_path",
+    "create_playlist_from_source",
+    "create_track_from_source",
     "extract_year_from_date",
     "format_duration",
     "format_file_size",
@@ -143,57 +153,4 @@ __all__ = [
     "sanitize_filename",
     "search_models",
     "validate_model_relationships",
-]
-
-
-def create_artist_from_source(
-    source: StreamingSource, artist_id: str, data: dict, **kwargs: object
-) -> Artist:
-    """Create an Artist from source data."""
-    factory_class = get_factory_for_source(source)
-    if hasattr(factory_class, "create_artist"):
-        return factory_class.create_artist(artist_id, data, **kwargs)
-    return ModelFactory.create_artist(source, artist_id, data, **kwargs)
-
-
-def create_album_from_source(
-    source: StreamingSource, album_id: str, data: dict, **kwargs: object
-) -> Album:
-    """Create an Album from source data."""
-    factory_class = get_factory_for_source(source)
-    if hasattr(factory_class, "create_album"):
-        return factory_class.create_album(album_id, data, **kwargs)
-    return ModelFactory.create_album(source, album_id, data, **kwargs)
-
-
-def create_track_from_source(
-    source: StreamingSource,
-    track_id: str,
-    data: dict,
-    album_data: dict | None = None,
-    **kwargs: object,
-) -> Track:
-    """Create a Track from source data."""
-    factory_class = get_factory_for_source(source)
-    if hasattr(factory_class, "create_track"):
-        return factory_class.create_track(track_id, data, album_data, **kwargs)
-    return ModelFactory.create_track(source, track_id, data, album_data, **kwargs)
-
-
-def create_playlist_from_source(
-    source: StreamingSource, playlist_id: str, data: dict, **kwargs: object
-) -> Playlist:
-    """Create a Playlist from source data."""
-    factory_class = get_factory_for_source(source)
-    if hasattr(factory_class, "create_playlist"):
-        return factory_class.create_playlist(playlist_id, data, **kwargs)
-    return ModelFactory.create_playlist(source, playlist_id, data, **kwargs)
-
-
-# Add convenience functions to __all__
-__all__ += [
-    "create_album_from_source",
-    "create_artist_from_source",
-    "create_playlist_from_source",
-    "create_track_from_source",
 ]

@@ -51,7 +51,7 @@ class TestDownloadTask:
         assert sample_task.album == "Test Album"
         assert sample_task.state == DownloadState.PENDING
         assert sample_task.priority == DownloadPriority.NORMAL
-        assert sample_task.progress_percentage == 0.0
+        assert sample_task.progress_percentage == pytest.approx(0.0)
         assert sample_task.retry_count == 0
 
     def test_task_id_generation(self):
@@ -202,7 +202,7 @@ class TestDownloadTask:
         assert sample_task.state == DownloadState.COMPLETED
         assert sample_task.completed_at is not None
         assert sample_task.completed_at >= completion_time
-        assert sample_task.progress_percentage == 100.0
+        assert sample_task.progress_percentage == pytest.approx(100.0)
 
     def test_mark_failed(self, sample_task):
         """Test marking task as failed."""
@@ -425,7 +425,7 @@ class TestDownloadQueue:
         assert result is True
         assert task.state == DownloadState.COMPLETED
         assert task.completed_at is not None
-        assert task.progress_percentage == 100.0
+        assert task.progress_percentage == pytest.approx(100.0)
         assert download_queue.active_count == 0
         assert download_queue.completed_count == 1
 
@@ -787,7 +787,7 @@ class TestDownloadQueue:
         assert stats["active_tasks"] == 0
         assert stats["completed_tasks"] == 1
         assert stats["failed_tasks"] == 0
-        assert stats["queue_utilization"] == 1.0  # 1/100 * 100
+        assert stats["queue_utilization"] == pytest.approx(1.0)  # 1/100 * 100
 
     @pytest.mark.asyncio
     async def test_callback_exception_handling(self, download_queue, sample_task):

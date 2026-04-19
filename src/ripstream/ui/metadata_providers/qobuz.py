@@ -156,9 +156,10 @@ class QobuzMetadataProvider(BaseMetadataProvider):
         if album_callback and hasattr(artist, "stats"):
             try:
                 raw = artist.stats.get_metadata("source_data", {})
-                raw_albums: list[dict] = (
-                    raw.get("albums_items", []) if isinstance(raw, dict) else []
-                )
+                raw_items = raw.get("albums_items", []) if isinstance(raw, dict) else []
+                raw_albums: list[dict] = [
+                    item for item in raw_items if isinstance(item, dict)
+                ]
                 if raw_albums:
                     id_to_tracks = {
                         str(item.get("id")): int(item.get("tracks_count", 0) or 0)
@@ -219,9 +220,10 @@ class QobuzMetadataProvider(BaseMetadataProvider):
             id_to_raw: dict[str, dict] = {}
             try:
                 raw = artist.stats.get_metadata("source_data", {})
-                raw_albums: list[dict] = (
-                    raw.get("albums_items", []) if isinstance(raw, dict) else []
-                )
+                raw_items = raw.get("albums_items", []) if isinstance(raw, dict) else []
+                raw_albums: list[dict] = [
+                    item for item in raw_items if isinstance(item, dict)
+                ]
                 id_to_raw = {
                     str(item.get("id")): item
                     for item in raw_albums

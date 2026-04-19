@@ -68,9 +68,7 @@ def mock_download_service(temp_db):
 
     db_manager_module._downloads_db = temp_db
 
-    service = DownloadService()
-
-    yield service
+    yield DownloadService()
 
     # Restore original state
     db_manager_module._downloads_db = original_downloads_db

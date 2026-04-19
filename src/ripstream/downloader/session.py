@@ -8,7 +8,7 @@ import contextlib
 import logging
 import ssl
 from types import TracebackType
-from typing import Any, cast
+from typing import Any, Self, cast
 
 import aiohttp
 from aiohttp import ClientTimeout
@@ -111,7 +111,7 @@ class SessionManager:
                     await session.close()
             self._sessions.clear()
 
-    async def __aenter__(self) -> "SessionManager":
+    async def __aenter__(self) -> Self:
         """Async context manager entry."""
         return self
 
@@ -143,7 +143,7 @@ class DownloadSession:
             self._session = await self.session_manager.get_session(self.source)
         return self._session
 
-    async def head(self, url: str, **kwargs: object) -> aiohttp.ClientResponse:
+    async def head(self, url: str, **kwargs: Any) -> aiohttp.ClientResponse:
         """Perform a HEAD request."""
         session = await self.get_session()
         try:
@@ -159,7 +159,7 @@ class DownloadSession:
         self,
         url: str,
         stream: bool = False,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> aiohttp.ClientResponse:
         """Perform a GET request."""
         session = await self.get_session()
@@ -180,7 +180,7 @@ class DownloadSession:
     async def download_stream(
         self,
         url: str,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> aiohttp.ClientResponse:
         """Start a streaming download."""
         session = await self.get_session()
@@ -231,7 +231,7 @@ class DownloadSession:
         url: str,
         start_byte: int,
         end_byte: int,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> bytes:
         """Download a specific byte range."""
         orig_headers = kwargs.get("headers", {})
@@ -287,7 +287,8 @@ class DownloadSession:
             TimeoutError,
             aiohttp.ContentTypeError,
             aiohttp.ClientError,
-            Exception,
+            UnicodeDecodeError,
+            ValueError,
         ) as e:
             logger.debug("Failed to parse error response content: %s", e)
 
@@ -375,7 +376,7 @@ class DownloadSession:
             await self._session.close()
             self._session = None
 
-    async def __aenter__(self) -> "DownloadSession":
+    async def __aenter__(self) -> Self:
         """Async context manager entry."""
         return self
 

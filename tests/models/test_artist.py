@@ -129,7 +129,7 @@ class TestArtistStats:
         assert sample_artist_stats.total_plays == 1000000
         assert sample_artist_stats.monthly_listeners == 50000
         assert sample_artist_stats.followers == 25000
-        assert sample_artist_stats.popularity_score == 85.5
+        assert sample_artist_stats.popularity_score == pytest.approx(85.5)
 
     def test_artist_stats_defaults(self):
         """Test ArtistStats creation with default values."""
@@ -242,7 +242,7 @@ class TestArtist:
 
         assert artist.stats.total_albums == 5
         assert artist.stats.followers == 10000
-        assert artist.stats.popularity_score == 75.0
+        assert artist.stats.popularity_score == pytest.approx(75.0)
 
     def test_name_property(self, sample_artist):
         """Test name property."""
@@ -478,7 +478,7 @@ class TestArtistIntegration:
 
         assert artist.stats.total_albums == 10
         assert artist.stats.followers == 50000
-        assert artist.stats.popularity_score == 90.0
+        assert artist.stats.popularity_score == pytest.approx(90.0)
         assert not hasattr(artist.stats, "unknown_stat")
 
     def test_artist_with_kwargs(self):

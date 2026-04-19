@@ -102,7 +102,7 @@ class TestCreateFromSourceFunctions:
         # Create a mock source that doesn't have a specific factory
         mock_source = Mock()
 
-        with patch("ripstream.models.get_factory_for_source") as mock_get_factory:
+        with patch("ripstream.models.source_factory.get_factory_for_source") as mock_get_factory:
             mock_factory = Mock()
             mock_factory.create_artist = Mock(return_value=Mock(spec=Artist))
             mock_get_factory.return_value = mock_factory
@@ -151,7 +151,7 @@ class TestCreateFromSourceFunctions:
         """Test create_album_from_source falls back to ModelFactory when no specific factory."""
         mock_source = Mock()
 
-        with patch("ripstream.models.get_factory_for_source") as mock_get_factory:
+        with patch("ripstream.models.source_factory.get_factory_for_source") as mock_get_factory:
             mock_factory = Mock()
             mock_get_factory.return_value = mock_factory
 
@@ -205,7 +205,7 @@ class TestCreateFromSourceFunctions:
         """Test create_track_from_source falls back to ModelFactory when no specific factory."""
         mock_source = Mock()
 
-        with patch("ripstream.models.get_factory_for_source") as mock_get_factory:
+        with patch("ripstream.models.source_factory.get_factory_for_source") as mock_get_factory:
             mock_factory = Mock()
             mock_get_factory.return_value = mock_factory
 
@@ -263,7 +263,7 @@ class TestCreateFromSourceFunctions:
         """Test create_playlist_from_source falls back to ModelFactory when no specific factory."""
         mock_source = Mock()
 
-        with patch("ripstream.models.get_factory_for_source") as mock_get_factory:
+        with patch("ripstream.models.source_factory.get_factory_for_source") as mock_get_factory:
             mock_factory = Mock()
             mock_get_factory.return_value = mock_factory
 

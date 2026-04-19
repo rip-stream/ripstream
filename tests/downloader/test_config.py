@@ -22,14 +22,14 @@ class TestDownloadBehaviorSettings:
 
     def test_download_behavior_settings_defaults(self, default_settings):
         """Test DownloadBehaviorSettings with default values."""
-        assert default_settings.timeout_seconds == 120.0
+        assert default_settings.timeout_seconds == pytest.approx(120.0)
         assert default_settings.chunk_size == 8192
         assert default_settings.max_concurrent_chunks == 1
         assert default_settings.max_retries == 3
         assert default_settings.retry_strategy == RetryStrategy.EXPONENTIAL
-        assert default_settings.retry_delay == 1.0
-        assert default_settings.retry_backoff_factor == 2.0
-        assert default_settings.max_requests_per_second == 10.0
+        assert default_settings.retry_delay == pytest.approx(1.0)
+        assert default_settings.retry_backoff_factor == pytest.approx(2.0)
+        assert default_settings.max_requests_per_second == pytest.approx(10.0)
         assert default_settings.rate_limit_burst == 5
         assert default_settings.overwrite_existing is False
         assert default_settings.create_directories is True
@@ -56,14 +56,14 @@ class TestDownloadBehaviorSettings:
             verify_file_size=False,
         )
 
-        assert settings.timeout_seconds == 60.0
+        assert settings.timeout_seconds == pytest.approx(60.0)
         assert settings.chunk_size == 16384
         assert settings.max_concurrent_chunks == 4
         assert settings.max_retries == 5
         assert settings.retry_strategy == RetryStrategy.LINEAR
-        assert settings.retry_delay == 2.0
-        assert settings.retry_backoff_factor == 3.0
-        assert settings.max_requests_per_second == 20.0
+        assert settings.retry_delay == pytest.approx(2.0)
+        assert settings.retry_backoff_factor == pytest.approx(3.0)
+        assert settings.max_requests_per_second == pytest.approx(20.0)
         assert settings.rate_limit_burst == 10
         assert settings.overwrite_existing is True
         assert settings.create_directories is False
@@ -134,10 +134,10 @@ class TestDownloaderConfig:
         assert default_config.queue_size_limit == 1000
         assert isinstance(default_config.default_behavior, DownloadBehaviorSettings)
         assert default_config.user_agent == "RipStream/1.0"
-        assert default_config.session_timeout == 300.0
+        assert default_config.session_timeout == pytest.approx(300.0)
         assert default_config.min_free_space_mb == 100
         assert default_config.cleanup_temp_files is True
-        assert default_config.log_progress_interval == 1.0
+        assert default_config.log_progress_interval == pytest.approx(1.0)
         assert default_config.log_level == "INFO"
         assert default_config.enable_resume is True
         assert default_config.enable_compression is True
@@ -170,10 +170,10 @@ class TestDownloaderConfig:
         assert config.max_concurrent_downloads == 5
         assert config.queue_size_limit == 500
         assert config.user_agent == "CustomAgent/2.0"
-        assert config.session_timeout == 600.0
+        assert config.session_timeout == pytest.approx(600.0)
         assert config.min_free_space_mb == 200
         assert config.cleanup_temp_files is False
-        assert config.log_progress_interval == 2.0
+        assert config.log_progress_interval == pytest.approx(2.0)
         assert config.log_level == "DEBUG"
         assert config.enable_resume is False
         assert config.enable_compression is False
@@ -228,7 +228,7 @@ class TestDownloaderConfig:
         """Test getting default behavior settings for a source."""
         settings = default_config.get_behavior_for_source("unknown_source")
         assert isinstance(settings, DownloadBehaviorSettings)
-        assert settings.timeout_seconds == 120.0  # Default value
+        assert settings.timeout_seconds == pytest.approx(120.0)  # Default value
 
     def test_get_behavior_for_source_with_overrides(self, default_config):
         """Test getting behavior settings for a source with overrides."""
@@ -239,7 +239,7 @@ class TestDownloaderConfig:
         }
 
         settings = default_config.get_behavior_for_source("qobuz")
-        assert settings.timeout_seconds == 60.0
+        assert settings.timeout_seconds == pytest.approx(60.0)
         assert settings.max_retries == 5
         assert settings.verify_checksums is False
         # Other settings should remain default
@@ -254,7 +254,7 @@ class TestDownloaderConfig:
         }
 
         settings = default_config.get_behavior_for_source("test")
-        assert settings.timeout_seconds == 45.0
+        assert settings.timeout_seconds == pytest.approx(45.0)
         # Should not have unknown_field attribute
         assert not hasattr(settings, "unknown_field")
 

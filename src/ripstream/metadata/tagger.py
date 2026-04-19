@@ -12,11 +12,13 @@ import aiofiles
 from mutagen import id3
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import (
-    APIC,  # type: ignore
+    APIC,
     ID3,
     ID3NoHeaderError,
 )
 from mutagen.mp4 import MP4, MP4Cover
+
+from ripstream.core.aio_path import path_exists, path_size
 
 logger = logging.getLogger(__name__)
 
@@ -195,13 +197,13 @@ class Container(Enum):
 
     async def embed_cover(self, audio: Any, cover_path: str) -> None:
         """Embed cover art into the audio file."""
-        if not Path(cover_path).exists():
+        if not await path_exists(cover_path):
             logger.warning("Cover art file not found: %s", cover_path)
             return
 
         # Check if file is accessible and not empty
         try:
-            file_size = Path(cover_path).stat().st_size
+            file_size = await path_size(cover_path)
             if file_size == 0:
                 logger.warning("Cover art file is empty: %s", cover_path)
                 return
@@ -253,7 +255,7 @@ async def tag_file(
         metadata: Dictionary containing metadata fields
         cover_path: Optional path to cover art image
     """
-    if not Path(file_path).exists():
+    if not await path_exists(file_path):
         logger.error("Audio file not found: %s", file_path)
         return
 

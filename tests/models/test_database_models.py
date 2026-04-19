@@ -46,9 +46,7 @@ def download_service(temp_db):
 
     db_manager_module._downloads_db = temp_db
 
-    service = DownloadService()
-
-    yield service
+    yield DownloadService()
 
     # Restore original state
     db_manager_module._downloads_db = original_downloads_db
@@ -78,7 +76,7 @@ class TestDownloadSession:
         assert session.title == "Test Artist"
         assert session.status == DownloadStatus.PENDING
         assert session.total_items == 0
-        assert session.progress_percentage == 0.0
+        assert session.progress_percentage == pytest.approx(0.0)
         assert session.is_active is True
 
     def test_update_progress(self, temp_db):
@@ -132,7 +130,7 @@ class TestDownloadSession:
 
             # Test the properties while session is still open
             assert session.completed_items == 2
-            assert session.progress_percentage == (2 / 3) * 100.0
+            assert session.progress_percentage == pytest.approx((2 / 3) * 100.0)
 
 
 class TestDownloadRecord:
@@ -161,7 +159,7 @@ class TestDownloadRecord:
         assert record.source_id == "track_123"
         assert record.title == "Test Track"
         assert record.status == DownloadStatus.PENDING
-        assert record.progress_percentage == 0.0
+        assert record.progress_percentage == pytest.approx(0.0)
         assert record.is_active is True
 
     def test_download_lifecycle(self, temp_db):
@@ -186,12 +184,12 @@ class TestDownloadRecord:
 
         # Update progress
         record.update_progress(50.0)
-        assert record.progress_percentage == 50.0
+        assert record.progress_percentage == pytest.approx(50.0)
 
         # Complete download
         record.mark_completed("/path/to/file.flac", 1234567)
         assert record.status == DownloadStatus.COMPLETED
-        assert record.progress_percentage == 100.0
+        assert record.progress_percentage == pytest.approx(100.0)
         assert record.file_path == "/path/to/file.flac"
         assert record.file_size_bytes == 1234567
         assert record.completed_at is not None
@@ -222,7 +220,7 @@ class TestDownloadRecord:
         record.reset_for_retry()
         assert record.status == DownloadStatus.PENDING
         assert record.error_message is None
-        assert record.progress_percentage == 0.0
+        assert record.progress_percentage == pytest.approx(0.0)
 
 
 class TestDownloadHistory:
@@ -368,7 +366,8 @@ class TestDownloadService:
         with download_service.downloads_db.get_session() as session:
             # Get the completed record
             completed_record = (
-                session.query(DownloadRecord)
+                session
+                .query(DownloadRecord)
                 .filter(DownloadRecord.id == record.id)
                 .first()
             )
@@ -441,7 +440,8 @@ class TestDownloadService:
 
             # Query failed downloads directly to verify they exist
             failed_records = (
-                db_session.query(DownloadRecord)
+                db_session
+                .query(DownloadRecord)
                 .filter(
                     and_(
                         DownloadRecord.session_id == session.id,
@@ -545,7 +545,7 @@ class TestFailedDownloads:
 
         assert record.status == DownloadStatus.PENDING
         assert record.error_message is None
-        assert record.progress_percentage == 0.0
+        assert record.progress_percentage == pytest.approx(0.0)
         assert record.started_at is None
         assert record.completed_at is None
 
@@ -572,7 +572,8 @@ class TestFailedDownloads:
 
             # Test repository queries
             failed_records = (
-                db_session.query(DownloadRecord)
+                db_session
+                .query(DownloadRecord)
                 .filter(DownloadRecord.status == DownloadStatus.FAILED)
                 .all()
             )
