@@ -13,6 +13,7 @@ dependencies = [
     "pillow>=10.0.0",
     "pydantic>=2.11.7",
     "pyqt6>=6.9.1",
+    "pyqt6-webengine>=6.9,<6.10",
     "qtawesome>=1.4.0",
     "sqlalchemy>=2.0.41",
 ]
@@ -27,8 +28,8 @@ dev = [
     "pytest-cov>=6.2.1",
     "pytest-qt>=4.5.0",
     "pytest-xdist>=3.8.0",
-    "ruff>=0.12.5",
-    "ty>=0.0.1a16",
+    "ruff>=0.15.11",
+    "ty>=0.0.31",
 ]
 
 [tool.setuptools.packages.find]

@@ -436,11 +436,11 @@ class DownloadWorker(QThread):
         if hasattr(self, "_progress_check_timer"):
             self._progress_check_timer.stop()
             self._progress_check_timer.deleteLater()
-            delattr(self, "_progress_check_timer")
+            del self._progress_check_timer
 
         # Clean up progress check guard
         if hasattr(self, "_progress_check_in_progress"):
-            delattr(self, "_progress_check_in_progress")
+            del self._progress_check_in_progress
 
         # Remove the callback from the progress tracker
         if hasattr(self, "_current_provider") and self._current_provider:
@@ -453,13 +453,13 @@ class DownloadWorker(QThread):
                     progress_tracker.remove_callback(self._progress_callback)
 
         if hasattr(self, "_current_provider"):
-            delattr(self, "_current_provider")
+            del self._current_provider
 
         if hasattr(self, "_current_download_id"):
-            delattr(self, "_current_download_id")
+            del self._current_download_id
 
         if hasattr(self, "_last_known_progress"):
-            delattr(self, "_last_known_progress")
+            del self._last_known_progress
 
     def _extract_download_info(self, item_details: dict) -> dict[str, Any]:
         """Extract and validate download information from item details."""

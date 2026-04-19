@@ -51,24 +51,34 @@ downloader = QobuzDownloader(config, session_manager, progress_tracker)
 
 ### Authentication
 
-```python
-# Using email/password
-credentials = {
-    "email_or_userid": "your_email@example.com",
-    "password_or_token": "your_password",
-    "use_auth_token": False,
-}
+> **Important:** Qobuz no longer accepts plain email/password against the
+> `user/login` endpoint for third-party clients (it returns
+> `401 User authentication is required`). Authentication now requires
+> a `user_auth_token` captured from a logged-in browser session.
 
-# Using auth token
+```python
+# Token-based authentication (only mode that currently works)
 credentials = {
-    "email_or_userid": "your_user_id",
-    "password_or_token": "your_auth_token",
+    "email_or_userid": "your_user_id",      # numeric Qobuz user id
+    "password_or_token": "your_auth_token",  # JWT captured from browser
     "use_auth_token": True,
 }
 
 # Authenticate
 authenticated = await downloader.authenticate(credentials)
 ```
+
+The ripstream UI exposes a **Login with browser…** button under
+*Preferences → Services → Qobuz* that opens an embedded Qt WebEngine
+window pointed at `https://play.qobuz.com/login`. After you log in there
+the dialog automatically captures the `user_id` + `user_auth_token` from
+the Qobuz `user/login` API response and writes them back into the
+preferences form.
+
+To capture the token manually (without ripstream), open
+[play.qobuz.com/login](https://play.qobuz.com/login) in Chrome/Firefox,
+open DevTools → Network, filter for `user/login`, sign in, then copy
+`user.id` and `user_auth_token` from the response.
 
 ### Searching and Downloading
 
@@ -151,8 +161,10 @@ The Qobuz downloader uses a sophisticated method to obtain valid app credentials
 
 ### Credential Types
 
-- **Email/Password**: Standard user credentials
-- **Auth Token**: Pre-obtained authentication token for API access
+- **Auth Token (only working mode)**: Browser-captured `user_id` +
+  `user_auth_token` issued by Qobuz's official login flow.
+- ~~**Email/Password**~~: Disabled by Qobuz - the `user/login` endpoint
+  now rejects plain credentials with `401 User authentication is required`.
 
 ## Error Handling
 

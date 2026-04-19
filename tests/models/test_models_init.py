@@ -108,7 +108,7 @@ class TestCreateFromSourceFunctions:
             mock_get_factory.return_value = mock_factory
 
             # Test when factory doesn't have create_artist method
-            delattr(mock_factory, "create_artist")
+            del mock_factory.create_artist
 
             with patch.object(ModelFactory, "create_artist") as mock_model_create:
                 mock_artist = Mock(spec=Artist)
@@ -157,7 +157,7 @@ class TestCreateFromSourceFunctions:
 
             # Test when factory doesn't have create_album method
             if hasattr(mock_factory, "create_album"):
-                delattr(mock_factory, "create_album")
+                del mock_factory.create_album
 
             with patch.object(ModelFactory, "create_album") as mock_model_create:
                 mock_album = Mock(spec=Album)
@@ -211,7 +211,7 @@ class TestCreateFromSourceFunctions:
 
             # Test when factory doesn't have create_track method
             if hasattr(mock_factory, "create_track"):
-                delattr(mock_factory, "create_track")
+                del mock_factory.create_track
 
             with patch.object(ModelFactory, "create_track") as mock_model_create:
                 mock_track = Mock(spec=Track)
@@ -269,7 +269,7 @@ class TestCreateFromSourceFunctions:
 
             # Test when factory doesn't have create_playlist method
             if hasattr(mock_factory, "create_playlist"):
-                delattr(mock_factory, "create_playlist")
+                del mock_factory.create_playlist
 
             with patch.object(ModelFactory, "create_playlist") as mock_model_create:
                 mock_playlist = Mock(spec=Playlist)

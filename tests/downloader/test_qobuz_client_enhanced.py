@@ -333,9 +333,9 @@ class TestQobuzClient:
     @pytest.mark.parametrize(
         ("status_code", "expected_error"),
         [
-            (401, "Invalid credentials"),
-            (400, "Invalid app ID"),
-            (500, "Login failed with status 500"),
+            (401, "Login with browser"),
+            (400, "Qobuz rejected the app id"),
+            (500, "Qobuz login failed with status 500"),
         ],
     )
     @pytest.mark.asyncio
@@ -363,7 +363,9 @@ class TestQobuzClient:
             patch.object(
                 qobuz_client, "_api_request", return_value=(200, mock_response)
             ),
-            pytest.raises(AuthenticationError, match="Free accounts are not eligible"),
+            pytest.raises(
+                AuthenticationError, match="Free Qobuz accounts are not eligible"
+            ),
         ):
             await qobuz_client.authenticate(mock_credentials)
 

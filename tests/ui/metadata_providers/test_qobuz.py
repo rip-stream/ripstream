@@ -711,7 +711,7 @@ class TestQobuzMetadataProvider:
         self, provider_with_credentials: QobuzMetadataProvider
     ):
         """Test cleanup when session_manager doesn't exist."""
-        delattr(provider_with_credentials, "session_manager")
+        del provider_with_credentials.session_manager
 
         # Should not raise an exception
         await provider_with_credentials.cleanup()
